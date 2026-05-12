@@ -6,8 +6,8 @@ import { KESTRA_BASE_URL, getExecution, getKestraHeaders, resumeExecution } from
 import type { Execution } from '@/types/kestra';
 
 const STEPS = [
-  { id: 'download_audio', label: 'Download Audio' },
   { id: 'fetch_thumbnail', label: 'Extract Image' },
+  { id: 'download_audio', label: 'Download Audio' },
   { id: 'transcribe_audio', label: 'Transcribe Audio' },
   { id: 'generate_tweet', label: 'Generate Tweet' },
   { id: 'human_approval', label: 'Human Approval' },
@@ -62,9 +62,10 @@ export default function PipelinePage() {
   const [execution, setExecution] = useState<Execution | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
   const [editedTweet, setEditedTweet] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  // Always declare all hooks before any conditional return!
+  const [thumbnailObjectUrl, setThumbnailObjectUrl] = useState<string | null>(null);
 
   const fetchExecution = useCallback(async () => {
     try {
@@ -88,13 +89,43 @@ export default function PipelinePage() {
       ) {
         return;
       }
-
       void fetchExecution();
     }, 5000);
-
     return () => clearInterval(intervalId);
   }, [execution?.state.current, fetchExecution]);
 
+  const thumbnailUri = getTaskOutputUri(execution, 'fetch_thumbnail');
+  let thumbnailUrl: string | null = null;
+  if (thumbnailUri) {
+    thumbnailUrl = `${KESTRA_BASE_URL}/api/v1/main/executions/${id}/file?path=${encodeURIComponent(thumbnailUri)}`;
+  }
+  useEffect(() => {
+    if (!thumbnailUrl) {
+      console.log('[thumbnail] no thumbnailUrl, skipping fetch. thumbnailUri =', thumbnailUri);
+      return;
+    }
+    console.log('[thumbnail] fetching', thumbnailUrl);
+    let revoked = false;
+    fetch(thumbnailUrl, { headers: getKestraHeaders() })
+      .then(res => {
+        console.log('[thumbnail] response status', res.status, res.headers.get('content-type'));
+        if (!res.ok) throw new Error(`Thumbnail fetch failed: ${res.status}`);
+        return res.blob();
+      })
+      .then(blob => {
+        console.log('[thumbnail] blob type', blob.type, 'size', blob.size);
+        const imageBlob = blob.type.startsWith('image/') ? blob : new Blob([blob], { type: 'image/jpeg' });
+        const objUrl = URL.createObjectURL(imageBlob);
+        if (!revoked) setThumbnailObjectUrl(objUrl);
+      })
+      .catch(err => console.error('[thumbnail] fetch error', err));
+    return () => {
+      revoked = true;
+      if (thumbnailObjectUrl) URL.revokeObjectURL(thumbnailObjectUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thumbnailUrl]);
+  console.log('[thumbnail] thumbnailUri =', thumbnailUri, '| thumbnailObjectUrl =', thumbnailObjectUrl);
   useEffect(() => {
     if ((execution?.state.current === 'PAUSED' || execution?.state.current === 'SUCCESS') && !editedTweet) {
       const getTweetText = async () => {
@@ -196,11 +227,6 @@ export default function PipelinePage() {
     );
   }
 
-  const thumbnailUri = getTaskOutputUri(execution, 'fetch_thumbnail');
-  const thumbnailUrl = thumbnailUri
-    ? `${KESTRA_BASE_URL}/api/v1/main/executions/${id}/file?filePath=${encodeURIComponent(thumbnailUri)}`
-    : null;
-
   const charCount = editedTweet.length;
   const maxChars = 280;
   const tweetPosted = execution.taskRunList?.some(
@@ -272,12 +298,11 @@ export default function PipelinePage() {
             <div className="bg-white p-5 rounded-lg border border-green-100 whitespace-pre-wrap text-gray-800 shadow-sm font-medium">
               {editedTweet || (tweetPosted ? 'Tweet text was posted.' : 'Pipeline completed.')}
             </div>
-            {thumbnailUrl && (
+            {thumbnailObjectUrl && (
               <div className="mt-4">
                 <p className="text-sm font-medium text-green-700 mb-2">Included Image:</p>
-                {/* biome-ignore lint/performance/noImgElement: Kestra file URLs are served dynamically and this local demo only needs direct rendering. */}
                 <img 
-                  src={thumbnailUrl} 
+                  src={thumbnailObjectUrl} 
                   alt="Thumbnail" 
                   className="rounded-lg border border-green-200 max-h-64 object-contain"
                 />
@@ -312,10 +337,9 @@ export default function PipelinePage() {
               <div className="md:w-64 flex flex-col gap-2 shrink-0">
                 <p className="font-semibold text-gray-700 text-sm">Generated Image</p>
                 <div className="bg-gray-100 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center aspect-square">
-                  {thumbnailUrl ? (
-                    /* biome-ignore lint/performance/noImgElement: Kestra file URLs are served dynamically and this local demo only needs direct rendering. */
+                  {thumbnailObjectUrl ? (
                     <img 
-                      src={thumbnailUrl} 
+                      src={thumbnailObjectUrl} 
                       alt="Thumbnail preview" 
                       className="w-full h-full object-cover"
                     />
@@ -346,6 +370,17 @@ export default function PipelinePage() {
                 Reject
               </button>
             </div>
+          </div>
+        )}
+
+        {thumbnailObjectUrl && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 mb-8 flex flex-col gap-2">
+            <p className="font-semibold text-gray-700 text-sm">Thumbnail</p>
+            <img
+              src={thumbnailObjectUrl}
+              alt="Video thumbnail"
+              className="rounded-lg border border-gray-200 max-h-48 object-contain"
+            />
           </div>
         )}
       </div>

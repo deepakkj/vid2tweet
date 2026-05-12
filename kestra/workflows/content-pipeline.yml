@@ -18,6 +18,10 @@ tasks:
   - id: parallel_download
     type: io.kestra.plugin.core.flow.Parallel
     tasks:
+      - id: fetch_thumbnail
+        type: io.kestra.plugin.core.http.Download
+        uri: "https://img.youtube.com/vi/{{ read(outputs.extract_video_id.outputFiles['video_id.txt']) | trim }}/hqdefault.jpg"
+
       - id: download_audio
         type: io.kestra.plugin.scripts.shell.Commands
         containerImage: "python:3.11-slim"
@@ -45,12 +49,6 @@ tasks:
         outputFiles:
           - audio_compressed.mp3
           - metadata.txt
-
-      - id: fetch_thumbnail
-        type: io.kestra.plugin.core.http.Download
-        uri: "https://img.youtube.com/vi/{{ read(outputs.extract_video_id.outputFiles['video_id.txt']) | trim }}/hqdefault.jpg"
-        filename: "thumbnail.jpg"
-        contentType: "image/jpeg"
 
   - id: transcribe_audio
     type: io.kestra.plugin.scripts.python.Script

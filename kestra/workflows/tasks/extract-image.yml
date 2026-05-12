@@ -18,5 +18,3 @@ tasks:
   - id: fetch_thumbnail
     type: io.kestra.plugin.core.http.Download
     uri: "https://img.youtube.com/vi/{{ read(outputs.extract_video_id.outputFiles['video_id.txt']) | trim }}/hqdefault.jpg"
-    filename: "thumbnail.jpg"
-    contentType: "image/jpeg"
