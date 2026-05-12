@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://api.kestra.io/v1/plugins/schemas/flow
+id: generate-tweet
+namespace: vid2tweet
+inputs:
+  - id: transcript
+    type: STRING
+    description: "Video transcript text to generate tweet from"
+
+tasks:
+  - id: generate_tweet
+    type: io.kestra.plugin.core.http.Request
+    uri: "https://api.groq.com/openai/v1/chat/completions"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ secret('GROQ_API_KEY') }}"
+      Content-Type: "application/json"
+    body: |
+      {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a social media expert. Generate a single tweet (max 270 characters) based on the following video transcript. The tweet should be engaging, include 1-2 relevant hashtags, and capture the key insight. Output ONLY the tweet text, nothing else."
+          },
+          {
+            "role": "user",
+            "content": {{ inputs.transcript | json }}
+          }
+        ],
+        "temperature": 0.7,
+        "max_tokens": 100
+      }
+
+  - id: validate_tweet
+    type: io.kestra.plugin.scripts.shell.Commands
+    commands:
+      - |
+        set -e
+        TWEET=$(echo '{{ outputs.generate_tweet.body }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'].strip())")
+        echo "$TWEET" > tweet.txt
+        TWEET_LEN=$(wc -m < tweet.txt | tr -d ' ')
+        echo "Tweet length: $TWEET_LEN characters"
+        if [ "$TWEET_LEN" -gt 280 ]; then
+          echo "ERROR: Tweet exceeds 280 characters ($TWEET_LEN)" >&2
+          exit 1
+        fi
+        echo "Tweet generated successfully: $TWEET_LEN characters"
+    outputFiles:
+      - tweet.txt

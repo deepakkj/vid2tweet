@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://api.kestra.io/v1/plugins/schemas/flow
+id: extract-image
+namespace: vid2tweet
+inputs:
+  - id: youtube_url
+    type: STRING
+    description: "YouTube video URL to extract thumbnail from"
+
+tasks:
+  - id: extract_video_id
+    type: io.kestra.plugin.scripts.shell.Commands
+    containerImage: "python:3.11-slim"
+    commands:
+      - python3 -c 'import re,sys; url="{{ inputs.youtube_url }}"; m=re.search(r"(?:v=|youtu\.be/|shorts/)([A-Za-z0-9_-]{11})",url); print(m.group(1)) if m else sys.exit(1)' > video_id.txt
+    outputFiles:
+      - video_id.txt
+
+  - id: fetch_thumbnail
+    type: io.kestra.plugin.core.http.Download
+    uri: "https://img.youtube.com/vi/{{ read(outputs.extract_video_id.outputFiles['video_id.txt']) | trim }}/hqdefault.jpg"
+    filename: "thumbnail.jpg"
+    contentType: "image/jpeg"

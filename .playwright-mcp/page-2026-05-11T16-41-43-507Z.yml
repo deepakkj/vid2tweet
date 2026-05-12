@@ -1,0 +1,59 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - heading "Vid2Tweet" [level=1] [ref=e5]
+      - paragraph [ref=e6]: YouTube → Tweet, powered by AI + Kestra
+    - generic [ref=e9]:
+      - textbox "Paste YouTube URL here..." [ref=e10]
+      - button "Generate Tweet" [ref=e11]
+    - generic [ref=e12]:
+      - heading "Recent Pipelines" [level=2] [ref=e13]
+      - generic [ref=e14]: No recent pipelines found.
+    - generic [ref=e15]:
+      - heading "Coming Soon" [level=2] [ref=e16]
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]: 💼
+          - generic [ref=e20]:
+            - heading "LinkedIn Posts" [level=3] [ref=e21]
+            - generic [ref=e22]: Coming Soon
+        - generic [ref=e23]:
+          - generic [ref=e24]: 📝
+          - generic [ref=e25]:
+            - heading "Blog Articles" [level=3] [ref=e26]
+            - generic [ref=e27]: Coming Soon
+        - generic [ref=e28]:
+          - generic [ref=e29]: 📱
+          - generic [ref=e30]:
+            - heading "YouTube Shorts" [level=3] [ref=e31]
+            - generic [ref=e32]: Coming Soon
+        - generic [ref=e33]:
+          - generic [ref=e34]: 📸
+          - generic [ref=e35]:
+            - heading "Instagram Reels" [level=3] [ref=e36]
+            - generic [ref=e37]: Coming Soon
+        - generic [ref=e38]:
+          - generic [ref=e39]: 🎵
+          - generic [ref=e40]:
+            - heading "TikTok" [level=3] [ref=e41]
+            - generic [ref=e42]: Coming Soon
+        - generic [ref=e43]:
+          - generic [ref=e44]: 📈
+          - generic [ref=e45]:
+            - heading "Growth Prediction" [level=3] [ref=e46]
+            - generic [ref=e47]: Coming Soon
+        - generic [ref=e48]:
+          - generic [ref=e49]: 🧠
+          - generic [ref=e50]:
+            - heading "AI Memory" [level=3] [ref=e51]
+            - generic [ref=e52]: Coming Soon
+        - generic [ref=e53]:
+          - generic [ref=e54]: ⚖️
+          - generic [ref=e55]:
+            - heading "A/B Testing" [level=3] [ref=e56]
+            - generic [ref=e57]: Coming Soon
+        - generic [ref=e58]:
+          - generic [ref=e59]: 🛡️
+          - generic [ref=e60]:
+            - heading "Brand-Safe Scoring" [level=3] [ref=e61]
+            - generic [ref=e62]: Coming Soon

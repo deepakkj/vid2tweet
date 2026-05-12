@@ -1,0 +1,47 @@
+@startuml trigger-pipeline
+title Trigger Pipeline Sequence
+
+actor User
+participant "Next.js\nFrontend" as Frontend
+participant "Kestra\nOrchestrator" as Kestra
+participant "Groq API" as Groq
+participant "Twitter/X API" as Twitter
+database "PostgreSQL" as DB
+
+User -> Frontend: Paste YouTube URL\nClick "Generate Tweet"
+Frontend -> Kestra: POST /api/v1/main/executions/\nvid2tweet/content-pipeline\n{youtube_url}
+Kestra --> Frontend: {executionId}
+Frontend -> Frontend: Redirect to /pipeline/{id}
+
+loop Poll every 5s
+  Frontend -> Kestra: GET /api/v1/main/executions/{id}
+  Kestra --> Frontend: {state: "RUNNING", taskRunList}
+end
+
+Kestra -> Groq: POST /audio/transcriptions\n(multipart audio file)
+Groq --> Kestra: {text: "transcript..."}
+
+Kestra -> Groq: POST /chat/completions\n(transcript → tweet)
+Groq --> Kestra: {choices[0].message.content}
+
+Kestra -> Kestra: PAUSE (human_approval)
+Frontend -> Kestra: GET /api/v1/main/executions/{id}
+Kestra --> Frontend: {state: "PAUSED", outputs}
+
+Frontend -> User: Show tweet preview + thumbnail\nApprove / Reject buttons
+
+User -> Frontend: Click "Approve & Post"
+Frontend -> Kestra: POST /api/v1/main/executions/{id}/resume\n{approved: true}
+
+Kestra -> Twitter: Upload image (v1 media upload)
+Twitter --> Kestra: {mediaId}
+Kestra -> Twitter: POST /tweets\n{text, media_ids: [mediaId]}
+Twitter --> Kestra: {tweet_id}
+
+Kestra -> DB: INSERT INTO pipeline_results
+DB --> Kestra: OK
+
+Kestra --> Frontend: {state: "SUCCESS"}
+Frontend -> User: "Tweet posted successfully!"
+
+@enduml

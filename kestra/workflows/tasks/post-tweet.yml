@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=https://api.kestra.io/v1/plugins/schemas/flow
+id: post-tweet
+namespace: vid2tweet
+inputs:
+  - id: tweet_file_uri
+    type: STRING
+    description: "Kestra internal URI of tweet.txt file"
+    required: false
+  - id: thumbnail_file_uri
+    type: STRING
+    description: "Kestra internal URI of thumbnail.jpg file"
+    required: false
+  - id: dry_run
+    type: BOOLEAN
+    description: "If true, skip actual posting and return mock result"
+    defaults: true
+
+tasks:
+  - id: post_to_twitter
+    type: io.kestra.plugin.scripts.node.Script
+    containerImage: "node:20-slim"
+    beforeCommands:
+      - npm install twitter-api-v2 --save --quiet
+    inputFiles:
+      tweet.txt: "{{ inputs.tweet_file_uri }}"
+      thumbnail.jpg: "{{ inputs.thumbnail_file_uri }}"
+    script: |
+      const { TwitterApi } = require('twitter-api-v2');
+      const fs = require('fs');
+
+      const isDryRun = {{ inputs.dry_run }};
+      const tweetText = fs.readFileSync('tweet.txt', 'utf-8').trim();
+      const imagePath = 'thumbnail.jpg';
+
+      async function postTweet() {
+        if (isDryRun) {
+          console.log('DRY RUN MODE: Skipping actual Twitter posting');
+          console.log(`Tweet text: ${tweetText}`);
+          const mockResult = {
+            tweet_id: 'dry_run_' + Date.now(),
+            tweet_text: tweetText,
+            posted_at: new Date().toISOString(),
+            dry_run: true
+          };
+          fs.writeFileSync('tweet_result.json', JSON.stringify(mockResult, null, 2));
+          console.log('Mock result written to tweet_result.json');
+          return;
+        }
+
+        const client = new TwitterApi({
+          appKey: '{{ secret("TWITTER_API_KEY") }}',
+          appSecret: '{{ secret("TWITTER_API_SECRET") }}',
+          accessToken: '{{ secret("TWITTER_ACCESS_TOKEN") }}',
+          accessSecret: '{{ secret("TWITTER_ACCESS_SECRET") }}'
+        });
+
+        // Upload image
+        console.log('Uploading image...');
+        const mediaId = await client.v1.uploadMedia(imagePath);
+        console.log(`Image uploaded, mediaId: ${mediaId}`);
+
+        // Post tweet with image
+        const tweet = await client.v2.tweet({
+          text: tweetText,
+          media: { media_ids: [mediaId] }
+        });
+
+        console.log(`Tweet posted! ID: ${tweet.data.id}`);
+
+        const result = {
+          tweet_id: tweet.data.id,
+          tweet_text: tweetText,
+          posted_at: new Date().toISOString(),
+          dry_run: false
+        };
+        fs.writeFileSync('tweet_result.json', JSON.stringify(result, null, 2));
+      }
+
+      postTweet().catch(err => {
+        console.error(`ERROR: Failed to post tweet: ${err.message}`);
+        process.exit(1);
+      });
+    outputFiles:
+      - tweet_result.json

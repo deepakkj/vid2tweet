@@ -1,0 +1,38 @@
+@startuml pipeline-flow
+title Vid2Tweet Pipeline Flow
+
+start
+
+:User pastes YouTube URL;
+:Frontend triggers Kestra pipeline;
+
+fork
+  :Download Audio\n(yt-dlp + FFmpeg);
+  :Validate duration ≤ 20 min;
+  :Compress to MP3 <25MB;
+fork again
+  :Download Video (low quality);
+  :Extract best frame (1/3 duration);
+  :Compress thumbnail <5MB;
+end fork
+
+:Transcribe Audio\n(Groq Whisper);
+
+:Generate Tweet\n(Groq Llama 3.3 70B);
+:Validate tweet ≤ 280 chars;
+
+:Human Approval Checkpoint;
+note right: Pipeline PAUSES here\nFrontend shows preview
+
+if (User approves?) then (yes)
+  :Post Tweet to Twitter/X\n(with thumbnail image);
+  :Save result to PostgreSQL;
+  :Pipeline SUCCESS;
+else (no)
+  :Log rejection;
+  :Pipeline terminates\n(no tweet posted);
+endif
+
+stop
+
+@enduml

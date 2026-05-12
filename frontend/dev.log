@@ -1,0 +1,36 @@
+
+> frontend@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.31.130:3000
+- Environments: .env.local
+✓ Ready in 452ms
+
+ HEAD / 200 in 43ms (next.js: 12ms, application-code: 31ms)
+ GET / 200 in 3.9s (next.js: 3.7s, application-code: 149ms)
+[browser] Failed to fetch executions TypeError: Failed to fetch
+    at listExecutions (src/lib/kestra-client.ts:48:21)
+    at fetchExecutions (src/app/page.tsx:40:40)
+    at HomePage.useEffect (src/app/page.tsx:57:5)
+  46 |
+  47 | export async function listExecutions() {
+> 48 |   const res = await fetch(
+     |                     ^
+  49 |     `${KESTRA_BASE_URL}/api/v1/main/executions?namespace=${NAMESPACE}&flowId=${FLOW_ID}`
+  50 |   );
+  51 |   if (!res.ok) { (src/app/page.tsx:51:15)
+ GET / 200 in 34ms (next.js: 8ms, application-code: 27ms)
+[browser] Failed to fetch executions TypeError: Failed to fetch
+    at listExecutions (src/lib/kestra-client.ts:48:21)
+    at fetchExecutions (src/app/page.tsx:40:40)
+    at HomePage.useEffect (src/app/page.tsx:57:5)
+  46 |
+  47 | export async function listExecutions() {
+> 48 |   const res = await fetch(
+     |                     ^
+  49 |     `${KESTRA_BASE_URL}/api/v1/main/executions?namespace=${NAMESPACE}&flowId=${FLOW_ID}`
+  50 |   );
+  51 |   if (!res.ok) { (src/app/page.tsx:51:15)
+[?25h

@@ -1,0 +1,9 @@
+id: smoke-test
+namespace: vid2tweet
+tasks:
+  - id: hello_script
+    type: io.kestra.plugin.scripts.shell.Commands
+    containerImage: "alpine:latest"
+    commands:
+      - echo "Hello from Kestra + Podman!"
+      - date

@@ -1,0 +1,19 @@
+@startuml system-context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title System Context — Vid2Tweet
+
+Person(user, "Content Creator", "Pastes YouTube URL, reviews and approves tweet")
+
+System(vid2tweet, "Vid2Tweet", "Orchestrates AI pipeline to transform YouTube videos into tweets")
+
+System_Ext(youtube, "YouTube", "Video hosting platform")
+System_Ext(groq, "Groq API", "AI inference: Whisper transcription + Llama 3.3 tweet generation")
+System_Ext(twitter, "Twitter/X API", "Social media posting platform")
+
+Rel(user, vid2tweet, "Submits YouTube URL, approves tweet", "HTTPS/Browser")
+Rel(vid2tweet, youtube, "Downloads audio and video", "yt-dlp / HTTPS")
+Rel(vid2tweet, groq, "Transcribes audio, generates tweet", "REST API")
+Rel(vid2tweet, twitter, "Posts tweet with image", "OAuth 1.0a / REST API")
+
+@enduml

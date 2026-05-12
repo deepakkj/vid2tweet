@@ -1,0 +1,21 @@
+- generic [ref=e7]:
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - img [ref=e76]:
+        - img [ref=e77]
+      - generic [ref=e22]: Create admin user
+    - generic [ref=e23]:
+      - img [ref=e150]:
+        - img [ref=e151]
+      - generic [ref=e32]: Tell us more
+    - generic [ref=e33]:
+      - img [ref=e37]:
+        - img [ref=e38]
+      - generic [ref=e41]: Start Kestra UI
+  - generic [ref=e153]:
+    - img "success" [ref=e154]
+    - generic [ref=e155]:
+      - heading "Congratulations!" [level=1] [ref=e156]
+      - paragraph [ref=e157]: You’re all set!
+    - button "Start Kestra UI" [ref=e158] [cursor=pointer]:
+      - generic [ref=e159]: Start Kestra UI

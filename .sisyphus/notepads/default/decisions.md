@@ -1,0 +1,2 @@
+- Kept the smoke test as a minimal Kestra flow with a single shell command task to match the requested validation target.
+- Documented the port 8080 collision instead of changing docker-compose.yml, per instructions.

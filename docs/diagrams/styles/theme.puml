@@ -1,0 +1,23 @@
+@startuml theme
+' Vid2Tweet shared theme
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName "Helvetica"
+skinparam defaultFontSize 12
+skinparam ArrowColor #555555
+skinparam BorderColor #AAAAAA
+
+skinparam component {
+  BackgroundColor #E8F4FD
+  BorderColor #2196F3
+}
+
+skinparam database {
+  BackgroundColor #FFF3E0
+  BorderColor #FF9800
+}
+
+skinparam actor {
+  BackgroundColor #E8F5E9
+  BorderColor #4CAF50
+}
+@enduml

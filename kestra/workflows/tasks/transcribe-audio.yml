@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=https://api.kestra.io/v1/plugins/schemas/flow
+id: transcribe-audio
+namespace: vid2tweet
+inputs:
+  - id: audio_file_uri
+    type: STRING
+    description: "Kestra internal URI of the compressed audio file (from download-audio task)"
+    required: false
+
+tasks:
+  - id: transcribe
+    type: io.kestra.plugin.scripts.python.Script
+    containerImage: "python:3.11-slim"
+    beforeCommands:
+      - pip install requests --quiet
+    inputFiles:
+      audio_compressed.mp3: "{{ inputs.audio_file_uri }}"
+    script: |
+      import requests
+      import json
+      import os
+      import sys
+
+      api_key = "{{ secret('GROQ_API_KEY') }}"
+      audio_path = "audio_compressed.mp3"
+
+      if not os.path.exists(audio_path):
+          print(f"ERROR: Audio file not found at {audio_path}", file=sys.stderr)
+          sys.exit(1)
+
+      file_size = os.path.getsize(audio_path)
+      print(f"Audio file size: {file_size} bytes")
+
+      with open(audio_path, "rb") as f:
+          response = requests.post(
+              "https://api.groq.com/openai/v1/audio/transcriptions",
+              headers={"Authorization": f"Bearer {api_key}"},
+              files={"file": ("audio.mp3", f, "audio/mpeg")},
+              data={"model": "whisper-large-v3", "response_format": "json"}
+          )
+
+      if response.status_code != 200:
+          print(f"ERROR: Groq API returned {response.status_code}: {response.text}", file=sys.stderr)
+          sys.exit(1)
+
+      result = response.json()
+      transcript = result.get("text", "")
+
+      if not transcript:
+          print("ERROR: Empty transcript returned from Groq", file=sys.stderr)
+          sys.exit(1)
+
+      with open("transcript.txt", "w") as f:
+          f.write(transcript)
+
+      print(f"Transcription complete: {len(transcript)} characters")
+    outputFiles:
+      - transcript.txt

@@ -1,0 +1,25 @@
+@startuml container-diagram
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Container Diagram — Vid2Tweet
+
+Person(user, "Content Creator")
+
+System_Boundary(vid2tweet, "Vid2Tweet System") {
+  Container(frontend, "Next.js Frontend", "Next.js 14, TypeScript, Tailwind", "URL input, pipeline status, approval UI")
+  Container(kestra, "Kestra Orchestrator", "Kestra, Docker/Podman", "Workflow engine — runs all AI agent tasks")
+  ContainerDb(postgres, "PostgreSQL", "PostgreSQL 18", "Stores pipeline results")
+}
+
+System_Ext(groq, "Groq API", "Whisper + Llama 3.3")
+System_Ext(twitter, "Twitter/X API", "Tweet posting")
+System_Ext(youtube, "YouTube", "Video source")
+
+Rel(user, frontend, "Uses", "HTTPS")
+Rel(frontend, kestra, "Triggers pipeline, polls status, sends approval", "REST API")
+Rel(kestra, postgres, "Saves pipeline results", "JDBC")
+Rel(kestra, groq, "Transcribes audio, generates tweet", "REST API")
+Rel(kestra, twitter, "Posts tweet with image", "OAuth 1.0a")
+Rel(kestra, youtube, "Downloads audio/video", "yt-dlp")
+
+@enduml
