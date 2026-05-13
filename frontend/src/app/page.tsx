@@ -295,26 +295,6 @@ export default function HomePage() {
             </div>
           )}
         </section>
-
-        <section>
-          <h2 className="text-2xl font-bold mb-6">Coming Soon</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {comingSoonFeatures.map((feature) => (
-              <div
-                key={feature.name}
-                className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4 opacity-75 grayscale-[30%] select-none cursor-default"
-              >
-                <span className="text-2xl">{feature.emoji}</span>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-700 text-sm mb-1.5">{feature.name}</h3>
-                  <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-bold uppercase rounded-sm tracking-widest border border-gray-200">
-                    Coming Soon
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
       </div>
     </main>
   );
