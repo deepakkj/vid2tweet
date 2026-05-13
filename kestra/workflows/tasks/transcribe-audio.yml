@@ -1,6 +1,10 @@
 # yaml-language-server: $schema=https://api.kestra.io/v1/plugins/schemas/flow
 id: transcribe-audio
 namespace: vid2tweet
+variables:
+  python_image: "python:3.11-slim"
+  transcription_endpoint: "https://api.groq.com/openai/v1/audio/transcriptions"
+  transcription_model: "whisper-large-v3"
 inputs:
   - id: audio_file_uri
     type: STRING
@@ -10,16 +14,15 @@ inputs:
 tasks:
   - id: transcribe
     type: io.kestra.plugin.scripts.python.Script
-    containerImage: "python:3.11-slim"
+    containerImage: "{{ vars.python_image }}"
     beforeCommands:
       - pip install requests --quiet
     inputFiles:
       audio_compressed.mp3: "{{ inputs.audio_file_uri }}"
     script: |
-      import requests
-      import json
       import os
       import sys
+      import requests
 
       api_key = "{{ secret('GROQ_API_KEY') }}"
       audio_path = "audio_compressed.mp3"
@@ -31,28 +34,39 @@ tasks:
       file_size = os.path.getsize(audio_path)
       print(f"Audio file size: {file_size} bytes")
 
-      with open(audio_path, "rb") as f:
+      with open(audio_path, "rb") as audio_file:
           response = requests.post(
-              "https://api.groq.com/openai/v1/audio/transcriptions",
+              "{{ vars.transcription_endpoint }}",
               headers={"Authorization": f"Bearer {api_key}"},
-              files={"file": ("audio.mp3", f, "audio/mpeg")},
-              data={"model": "whisper-large-v3", "response_format": "json"}
+              files={"file": ("audio.mp3", audio_file, "audio/mpeg")},
+              data={"model": "{{ vars.transcription_model }}", "response_format": "json"},
+              timeout=300,
           )
 
       if response.status_code != 200:
           print(f"ERROR: Groq API returned {response.status_code}: {response.text}", file=sys.stderr)
           sys.exit(1)
 
-      result = response.json()
-      transcript = result.get("text", "")
-
+      transcript = response.json().get("text", "")
       if not transcript:
           print("ERROR: Empty transcript returned from Groq", file=sys.stderr)
           sys.exit(1)
 
-      with open("transcript.txt", "w") as f:
-          f.write(transcript)
+      with open("transcript.txt", "w", encoding="utf-8") as transcript_file:
+          transcript_file.write(transcript)
 
       print(f"Transcription complete: {len(transcript)} characters")
     outputFiles:
       - transcript.txt
+    retry:
+      type: constant
+      interval: PT10S
+      maxAttempts: 3
+
+outputs:
+  - id: transcript_uri
+    type: URI
+    value: "{{ outputs.transcribe.outputFiles['transcript.txt'] }}"
+  - id: transcript_text
+    type: STRING
+    value: "{{ read(outputs.transcribe.outputFiles['transcript.txt']) }}"

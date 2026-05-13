@@ -10,18 +10,23 @@ const STEPS = [
   { id: 'download_audio', label: 'Download Audio' },
   { id: 'transcribe_audio', label: 'Transcribe Audio' },
   { id: 'generate_tweet', label: 'Generate Tweet' },
+  { id: 'resolve_final_tweet', label: 'Finalize Tweet' },
   { id: 'human_approval', label: 'Human Approval' },
   { id: 'post_tweet', label: 'Post Tweet' }
 ];
 
 type OutputFiles = Record<string, string>;
 
-function getOutputFiles(value: unknown): OutputFiles | undefined {
-  if (!value || typeof value !== 'object') {
-    return undefined;
-  }
+function getRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+}
 
-  const outputFiles = (value as { outputFiles?: unknown }).outputFiles;
+function getStringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function getOutputFiles(value: unknown): OutputFiles | undefined {
+  const outputFiles = getRecord(value)?.outputFiles;
   if (!outputFiles || typeof outputFiles !== 'object') {
     return undefined;
   }
@@ -29,6 +34,21 @@ function getOutputFiles(value: unknown): OutputFiles | undefined {
   return Object.fromEntries(
     Object.entries(outputFiles).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
   );
+}
+
+function getSubflowOutputs(execution: Execution | null, taskId: string): Record<string, unknown> | undefined {
+  const topLevelOutput = getRecord(execution?.outputs?.[taskId]);
+  const nestedTopLevelOutput = getRecord(topLevelOutput?.outputs);
+  if (nestedTopLevelOutput) {
+    return nestedTopLevelOutput;
+  }
+
+  const taskRunOutput = getRecord(
+    execution?.taskRunList?.find((taskRun) => taskRun.taskId === taskId)?.outputs
+  );
+  const nestedTaskRunOutput = getRecord(taskRunOutput?.outputs);
+
+  return nestedTaskRunOutput ?? taskRunOutput;
 }
 
 function getExecutionOutputFile(execution: Execution | null, taskId: string, fileName: string) {
@@ -49,10 +69,13 @@ function getExecutionOutputFile(execution: Execution | null, taskId: string, fil
 }
 
 function getTaskOutputUri(execution: Execution | null, taskId: string): string | null {
-  if (!execution) return null;
-  const taskRun = execution.taskRunList?.find((tr) => tr.taskId === taskId);
-  const uri = taskRun?.outputs?.uri;
-  return typeof uri === 'string' ? uri : null;
+  return getStringValue(getSubflowOutputs(execution, taskId)?.thumbnail_uri)
+    ?? getStringValue(getSubflowOutputs(execution, taskId)?.uri)
+    ?? getStringValue(execution?.outputs?.thumbnail_uri);
+}
+
+function getTaskState(execution: Execution | null, taskId: string) {
+  return execution?.taskRunList?.find((taskRun) => taskRun.taskId === taskId)?.state.current;
 }
 
 export default function PipelinePage() {
@@ -63,9 +86,10 @@ export default function PipelinePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editedTweet, setEditedTweet] = useState('');
+  const [generatedTweet, setGeneratedTweet] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
-  // Always declare all hooks before any conditional return!
   const [thumbnailObjectUrl, setThumbnailObjectUrl] = useState<string | null>(null);
+  const executionState = execution?.state.current;
 
   const fetchExecution = useCallback(async () => {
     try {
@@ -80,56 +104,74 @@ export default function PipelinePage() {
   }, [id]);
 
   useEffect(() => {
-    void fetchExecution();
+    const initialFetch = setTimeout(() => {
+      void fetchExecution();
+    }, 0);
+
     const intervalId = setInterval(() => {
       if (
-        execution?.state.current === 'SUCCESS' ||
-        execution?.state.current === 'FAILED' ||
-        execution?.state.current === 'KILLED'
+        executionState === 'SUCCESS' ||
+        executionState === 'FAILED' ||
+        executionState === 'KILLED'
       ) {
         return;
       }
       void fetchExecution();
     }, 5000);
-    return () => clearInterval(intervalId);
-  }, [execution?.state.current, fetchExecution]);
+
+    return () => {
+      clearTimeout(initialFetch);
+      clearInterval(intervalId);
+    };
+  }, [executionState, fetchExecution]);
 
   const thumbnailUri = getTaskOutputUri(execution, 'fetch_thumbnail');
   let thumbnailUrl: string | null = null;
   if (thumbnailUri) {
     thumbnailUrl = `${KESTRA_BASE_URL}/api/v1/main/executions/${id}/file?path=${encodeURIComponent(thumbnailUri)}`;
   }
+
   useEffect(() => {
     if (!thumbnailUrl) {
-      console.log('[thumbnail] no thumbnailUrl, skipping fetch. thumbnailUri =', thumbnailUri);
       return;
     }
-    console.log('[thumbnail] fetching', thumbnailUrl);
+
     let revoked = false;
+    let objectUrl: string | null = null;
+
     fetch(thumbnailUrl, { headers: getKestraHeaders() })
       .then(res => {
-        console.log('[thumbnail] response status', res.status, res.headers.get('content-type'));
         if (!res.ok) throw new Error(`Thumbnail fetch failed: ${res.status}`);
         return res.blob();
       })
       .then(blob => {
-        console.log('[thumbnail] blob type', blob.type, 'size', blob.size);
         const imageBlob = blob.type.startsWith('image/') ? blob : new Blob([blob], { type: 'image/jpeg' });
-        const objUrl = URL.createObjectURL(imageBlob);
-        if (!revoked) setThumbnailObjectUrl(objUrl);
+        objectUrl = URL.createObjectURL(imageBlob);
+        if (!revoked) setThumbnailObjectUrl(objectUrl);
       })
       .catch(err => console.error('[thumbnail] fetch error', err));
+
     return () => {
       revoked = true;
-      if (thumbnailObjectUrl) URL.revokeObjectURL(thumbnailObjectUrl);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thumbnailUrl]);
-  console.log('[thumbnail] thumbnailUri =', thumbnailUri, '| thumbnailObjectUrl =', thumbnailObjectUrl);
+
   useEffect(() => {
     if ((execution?.state.current === 'PAUSED' || execution?.state.current === 'SUCCESS') && !editedTweet) {
       const getTweetText = async () => {
-        const uri = getExecutionOutputFile(execution, 'validate_tweet', 'tweet.txt');
+        const directTweet = getStringValue(getSubflowOutputs(execution, 'generate_tweet')?.tweet_text)
+          ?? getStringValue(execution?.outputs?.generated_tweet_text);
+
+        if (directTweet) {
+          setGeneratedTweet(directTweet);
+          setEditedTweet(directTweet);
+          return;
+        }
+
+        const uri = getStringValue(getSubflowOutputs(execution, 'generate_tweet')?.tweet_file_uri)
+          ?? getStringValue(execution?.outputs?.generated_tweet_uri)
+          ?? getExecutionOutputFile(execution, 'validate_tweet', 'tweet.txt');
 
         if (uri && typeof uri === 'string') {
           try {
@@ -138,6 +180,7 @@ export default function PipelinePage() {
             });
             if (res.ok) {
               const text = await res.text();
+              setGeneratedTweet(text);
               setEditedTweet(text);
             }
           } catch (e) {
@@ -229,9 +272,7 @@ export default function PipelinePage() {
 
   const charCount = editedTweet.length;
   const maxChars = 280;
-  const tweetPosted = execution.taskRunList?.some(
-    (taskRun) => taskRun.taskId === 'post_tweet' && taskRun.state.current === 'SUCCESS'
-  );
+  const tweetPosted = getTaskState(execution, 'post_tweet') === 'SUCCESS';
 
   return (
     <main className="flex-1 bg-gray-50 text-gray-900 py-12">
@@ -242,6 +283,7 @@ export default function PipelinePage() {
           className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 font-medium transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <title>Back</title>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           Back to Home
@@ -306,7 +348,7 @@ export default function PipelinePage() {
               <span>✅</span> {tweetPosted ? 'Tweet posted successfully!' : 'Pipeline completed'}
             </h3>
             <div className="bg-white p-5 rounded-lg border border-green-100 whitespace-pre-wrap text-gray-800 shadow-sm font-medium">
-              {editedTweet || (tweetPosted ? 'Tweet text was posted.' : 'Pipeline completed.')}
+              {editedTweet || generatedTweet || (tweetPosted ? 'Tweet text was posted.' : 'Pipeline completed.')}
             </div>
             {thumbnailObjectUrl && (
               <div className="mt-4">

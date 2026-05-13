@@ -18,6 +18,16 @@ export interface TaskRun {
   outputs?: Record<string, unknown>;
 }
 
+export interface SubflowExecutionReference {
+  executionId?: string;
+  outputs?: Record<string, unknown>;
+  state?: {
+    current: ExecutionState;
+    startDate?: string;
+    endDate?: string;
+  };
+}
+
 export interface Execution {
   id: string;
   namespace: string;

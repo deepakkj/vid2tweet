@@ -1,6 +1,10 @@
 # yaml-language-server: $schema=https://api.kestra.io/v1/plugins/schemas/flow
 id: generate-tweet
 namespace: vid2tweet
+variables:
+  groq_chat_endpoint: "https://api.groq.com/openai/v1/chat/completions"
+  groq_chat_model: "llama-3.3-70b-versatile"
+  max_tweet_chars: 280
 inputs:
   - id: transcript
     type: STRING
@@ -9,14 +13,14 @@ inputs:
 tasks:
   - id: generate_tweet
     type: io.kestra.plugin.core.http.Request
-    uri: "https://api.groq.com/openai/v1/chat/completions"
+    uri: "{{ vars.groq_chat_endpoint }}"
     method: POST
     headers:
       Authorization: "Bearer {{ secret('GROQ_API_KEY') }}"
       Content-Type: "application/json"
     body: |
       {
-        "model": "llama-3.3-70b-versatile",
+        "model": "{{ vars.groq_chat_model }}",
         "messages": [
           {
             "role": "system",
@@ -30,6 +34,10 @@ tasks:
         "temperature": 0.7,
         "max_tokens": 100
       }
+    retry:
+      type: exponential
+      interval: PT5S
+      maxAttempts: 3
 
   - id: validate_tweet
     type: io.kestra.plugin.scripts.shell.Commands
@@ -41,10 +49,18 @@ tasks:
         echo "$TWEET" > tweet.txt
         TWEET_LEN=$(wc -m < tweet.txt | tr -d ' ')
         echo "Tweet length: $TWEET_LEN characters"
-        if [ "$TWEET_LEN" -gt 280 ]; then
-          echo "ERROR: Tweet exceeds 280 characters ($TWEET_LEN)" >&2
+        if [ "$TWEET_LEN" -gt {{ vars.max_tweet_chars }} ]; then
+          echo "ERROR: Tweet exceeds {{ vars.max_tweet_chars }} characters ($TWEET_LEN)" >&2
           exit 1
         fi
         echo "Tweet generated successfully: $TWEET_LEN characters"
     outputFiles:
       - tweet.txt
+
+outputs:
+  - id: tweet_file_uri
+    type: URI
+    value: "{{ outputs.validate_tweet.outputFiles['tweet.txt'] }}"
+  - id: tweet_text
+    type: STRING
+    value: "{{ read(outputs.validate_tweet.outputFiles['tweet.txt']) | trim }}"

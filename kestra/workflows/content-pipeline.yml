@@ -1,13 +1,20 @@
 # yaml-language-server: $schema=https://api.kestra.io/v1/plugins/schemas/flow
 id: content-pipeline
 namespace: vid2tweet
+variables:
+  python_image: "python:3.11-slim"
+  db_url: "jdbc:postgresql://postgres:5432/vid2tweet"
+  db_user: "kestra"
+  db_password: "k3str4"
+  max_tweet_chars: 280
 inputs:
+  # Canonical input definitions — subflows mirror these; keep descriptions in sync.
   - id: youtube_url
     type: STRING
-    description: "YouTube video URL to process"
+    description: "YouTube video URL to process (e.g. https://youtu.be/abc123)"
   - id: youtube_cookies
     type: STRING
-    description: "Raw contents of your YouTube cookies.txt file (Netscape format). Paste the full file contents here."
+    description: "Raw contents of a YouTube cookies.txt file (Netscape format) used to bypass age/login restrictions."
   - id: dry_run
     type: BOOLEAN
     description: "If true, skip actual Twitter posting (use when Twitter API lacks write access)"
@@ -17,147 +24,56 @@ inputs:
     required: false
     description: "OAuth 2.0 user access token from Connect X flow (injected server-side by the frontend)"
 
-tasks:
-  - id: extract_video_id
-    type: io.kestra.plugin.scripts.shell.Commands
-    containerImage: "python:3.11-slim"
-    commands:
-      - python3 -c 'import re,sys; url="{{ inputs.youtube_url }}"; m=re.search(r"(?:v=|youtu\.be/|shorts/)([A-Za-z0-9_-]{11})",url); print(m.group(1)) if m else sys.exit(1)' > video_id.txt
-    outputFiles:
-      - video_id.txt
+errors:
+  - id: log_failure
+    type: io.kestra.plugin.core.log.Log
+    message: "content-pipeline failed for {{ inputs.youtube_url }} (execution {{ execution.id }})"
 
-  - id: parallel_download
+tasks:
+  - id: prepare_assets
     type: io.kestra.plugin.core.flow.Parallel
     tasks:
       - id: fetch_thumbnail
-        type: io.kestra.plugin.core.http.Download
-        uri: "https://img.youtube.com/vi/{{ read(outputs.extract_video_id.outputFiles['video_id.txt']) | trim }}/hqdefault.jpg"
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: vid2tweet
+        flowId: extract-image
+        inputs:
+          youtube_url: "{{ inputs.youtube_url }}"
+        wait: true
+        transmitFailed: true
 
       - id: download_audio
-        type: io.kestra.plugin.scripts.shell.Commands
-        containerImage: "python:3.11-slim"
-        inputFiles:
-          cookies.txt: "{{ inputs.youtube_cookies }}"
-        beforeCommands:
-          - pip install yt-dlp --quiet
-          - DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y ffmpeg bc --quiet
-        commands:
-          - |
-            set -e
-            echo "Downloading audio from: {{ inputs.youtube_url }}"
-            yt-dlp --no-playlist --retries 5 --cookies cookies.txt \
-              --extractor-args "youtube:player_client=android_testsuite" \
-              -x --audio-format wav -o "/tmp/audio.wav" "{{ inputs.youtube_url }}"
-            DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 /tmp/audio.wav)
-            echo "Video duration: $DURATION seconds"
-            if [ "$(echo "$DURATION > 1200" | bc -l)" = "1" ]; then
-              echo "ERROR: Video exceeds 20-minute limit ($DURATION seconds)" >&2
-              exit 1
-            fi
-            ffmpeg -i /tmp/audio.wav -ar 16000 -ac 1 -b:a 32k /tmp/audio_compressed.mp3 -y
-            FILE_SIZE=$(stat -c%s /tmp/audio_compressed.mp3 2>/dev/null || stat -f%z /tmp/audio_compressed.mp3)
-            echo "Compressed audio size: $FILE_SIZE bytes"
-            cp /tmp/audio_compressed.mp3 audio_compressed.mp3
-            yt-dlp --no-playlist --cookies cookies.txt \
-              --extractor-args "youtube:player_client=android_testsuite" \
-              --print title --print thumbnail "{{ inputs.youtube_url }}" > metadata.txt 2>/dev/null || echo "metadata extraction failed" > metadata.txt
-            echo "Download complete!"
-        outputFiles:
-          - audio_compressed.mp3
-          - metadata.txt
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: vid2tweet
+        flowId: download-audio
+        inputs:
+          youtube_url: "{{ inputs.youtube_url }}"
+          youtube_cookies: "{{ inputs.youtube_cookies }}"
+        wait: true
+        transmitFailed: true
 
   - id: transcribe_audio
-    type: io.kestra.plugin.scripts.python.Script
-    containerImage: "python:3.11-slim"
-    beforeCommands:
-      - pip install requests --quiet
-    inputFiles:
-      audio_compressed.mp3: "{{ outputs.download_audio.outputFiles['audio_compressed.mp3'] }}"
-    script: |
-      import requests
-      import os
-      import sys
-
-      api_key = "{{ secret('GROQ_API_KEY') }}"
-      audio_path = "audio_compressed.mp3"
-
-      if not os.path.exists(audio_path):
-          print(f"ERROR: Audio file not found at {audio_path}", file=sys.stderr)
-          sys.exit(1)
-
-      file_size = os.path.getsize(audio_path)
-      print(f"Audio file size: {file_size} bytes")
-
-      with open(audio_path, "rb") as f:
-          response = requests.post(
-              "https://api.groq.com/openai/v1/audio/transcriptions",
-              headers={"Authorization": f"Bearer {api_key}"},
-              files={"file": ("audio.mp3", f, "audio/mpeg")},
-              data={"model": "whisper-large-v3", "response_format": "json"}
-          )
-
-      if response.status_code != 200:
-          print(f"ERROR: Groq API returned {response.status_code}: {response.text}", file=sys.stderr)
-          sys.exit(1)
-
-      result = response.json()
-      transcript = result.get("text", "")
-
-      if not transcript:
-          print("ERROR: Empty transcript returned from Groq", file=sys.stderr)
-          sys.exit(1)
-
-      with open("transcript.txt", "w") as f:
-          f.write(transcript)
-
-      print(f"Transcription complete: {len(transcript)} characters")
-    outputFiles:
-      - transcript.txt
+    type: io.kestra.plugin.core.flow.Subflow
+    namespace: vid2tweet
+    flowId: transcribe-audio
+    inputs:
+      audio_file_uri: "{{ outputs.download_audio.outputs.audio_file_uri }}"
+    wait: true
+    transmitFailed: true
 
   - id: generate_tweet
-    type: io.kestra.plugin.core.http.Request
-    uri: "https://api.groq.com/openai/v1/chat/completions"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ secret('GROQ_API_KEY') }}"
-      Content-Type: "application/json"
-    body: |
-      {
-        "model": "llama-3.3-70b-versatile",
-        "messages": [
-          {
-            "role": "system",
-            "content": "You are a social media expert. Generate a single tweet (max 270 characters) based on the following video transcript. The tweet should be engaging, include 1-2 relevant hashtags, and capture the key insight. Output ONLY the tweet text, nothing else."
-          },
-          {
-            "role": "user",
-            "content": {{ read(outputs.transcribe_audio.outputFiles['transcript.txt']) | json }}
-          }
-        ],
-        "temperature": 0.7,
-        "max_tokens": 100
-      }
-
-  - id: validate_tweet
-    type: io.kestra.plugin.scripts.shell.Commands
-    containerImage: "python:3.11-slim"
-    commands:
-      - |
-        set -e
-        TWEET=$(echo '{{ outputs.generate_tweet.body }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'].strip())")
-        echo "$TWEET" > tweet.txt
-        TWEET_LEN=$(wc -m < tweet.txt | tr -d ' ')
-        echo "Tweet length: $TWEET_LEN characters"
-        if [ "$TWEET_LEN" -gt 280 ]; then
-          echo "ERROR: Tweet exceeds 280 characters ($TWEET_LEN)" >&2
-          exit 1
-        fi
-        echo "Tweet validated: $TWEET_LEN characters"
-    outputFiles:
-      - tweet.txt
+    type: io.kestra.plugin.core.flow.Subflow
+    namespace: vid2tweet
+    flowId: generate-tweet
+    inputs:
+      transcript: "{{ outputs.transcribe_audio.outputs.transcript_text }}"
+    wait: true
+    transmitFailed: true
 
   - id: human_approval
     type: io.kestra.plugin.core.flow.Pause
+    pauseDuration: PT24H
+    behavior: FAIL
     onResume:
       - id: approved
         type: BOOLEAN
@@ -173,8 +89,9 @@ tasks:
     then:
       - id: resolve_final_tweet
         type: io.kestra.plugin.scripts.shell.Commands
+        containerImage: "{{ vars.python_image }}"
         inputFiles:
-          tweet.txt: "{{ outputs.validate_tweet.outputFiles['tweet.txt'] }}"
+          tweet.txt: "{{ outputs.generate_tweet.outputs.tweet_file_uri }}"
         env:
           EDITED_TWEET: "{{ outputs.human_approval.onResume.edited_tweet }}"
         commands:
@@ -187,100 +104,45 @@ tasks:
             fi
             TWEET_LEN=$(wc -m < final_tweet.txt | tr -d ' ')
             echo "Final tweet length: $TWEET_LEN characters"
-            if [ "$TWEET_LEN" -gt 280 ]; then
-              echo "ERROR: Final tweet exceeds 280 characters ($TWEET_LEN)" >&2
+            if [ "$TWEET_LEN" -gt {{ vars.max_tweet_chars }} ]; then
+              echo "ERROR: Final tweet exceeds {{ vars.max_tweet_chars }} characters ($TWEET_LEN)" >&2
               exit 1
             fi
         outputFiles:
           - final_tweet.txt
 
       - id: post_tweet
-        type: io.kestra.plugin.scripts.node.Script
-        containerImage: "node:20-slim"
-        beforeCommands:
-          - npm install twitter-api-v2 --save --quiet
-        inputFiles:
-          tweet.txt: "{{ outputs.resolve_final_tweet.outputFiles['final_tweet.txt'] }}"
-          thumbnail.jpg: "{{ outputs.fetch_thumbnail.uri }}"
-        script: |
-          const { TwitterApi } = require('twitter-api-v2');
-          const fs = require('fs');
-
-          const tweetText = fs.readFileSync('tweet.txt', 'utf-8').trim();
-          const imagePath = 'thumbnail.jpg';
-          const isDryRun = {{ inputs.dry_run }};
-          const oauth2Token = '{{ inputs.twitter_oauth2_token | default("") }}'.trim();
-
-          async function postTweet() {
-            if (isDryRun) {
-              console.log('DRY RUN: Skipping Twitter posting');
-              console.log(`Tweet text: ${tweetText}`);
-              const result = { tweet_id: 'dry_run_' + Date.now(), tweet_text: tweetText, posted_at: new Date().toISOString(), dry_run: true };
-              fs.writeFileSync('tweet_result.json', JSON.stringify(result, null, 2));
-              fs.writeFileSync('tweet_id.txt', `${result.tweet_id}\n`);
-              fs.writeFileSync('tweet_text.txt', `${tweetText}\n`);
-              return;
-            }
-
-            if (oauth2Token) {
-              // OAuth 2.0 user context — works on Twitter free tier
-              console.log('Using OAuth 2.0 user token (connected X account)');
-              const client = new TwitterApi(oauth2Token);
-              const tweet = await client.v2.tweet({ text: tweetText });
-              console.log(`Tweet posted! ID: ${tweet.data.id}`);
-              const result = { tweet_id: tweet.data.id, tweet_text: tweetText, posted_at: new Date().toISOString() };
-              fs.writeFileSync('tweet_result.json', JSON.stringify(result, null, 2));
-              fs.writeFileSync('tweet_id.txt', `${tweet.data.id}\n`);
-              fs.writeFileSync('tweet_text.txt', `${tweetText}\n`);
-            } else {
-              // OAuth 1.0a app credentials — posts with thumbnail image
-              console.log('Using OAuth 1.0a app credentials');
-              const client = new TwitterApi({
-                appKey: '{{ secret("TWITTER_API_KEY") }}',
-                appSecret: '{{ secret("TWITTER_API_SECRET") }}',
-                accessToken: '{{ secret("TWITTER_ACCESS_TOKEN") }}',
-                accessSecret: '{{ secret("TWITTER_ACCESS_SECRET") }}'
-              });
-              console.log('Uploading image...');
-              const mediaId = await client.v1.uploadMedia(imagePath);
-              console.log(`Image uploaded, mediaId: ${mediaId}`);
-              const tweet = await client.v2.tweet({ text: tweetText, media: { media_ids: [mediaId] } });
-              console.log(`Tweet posted! ID: ${tweet.data.id}`);
-              const result = { tweet_id: tweet.data.id, tweet_text: tweetText, posted_at: new Date().toISOString() };
-              fs.writeFileSync('tweet_result.json', JSON.stringify(result, null, 2));
-              fs.writeFileSync('tweet_id.txt', `${tweet.data.id}\n`);
-              fs.writeFileSync('tweet_text.txt', `${tweetText}\n`);
-            }
-          }
-
-          postTweet().catch(err => {
-            console.error(`ERROR: Failed to post tweet: ${err.message}`);
-            process.exit(1);
-          });
-        outputFiles:
-          - tweet_result.json
-          - tweet_id.txt
-          - tweet_text.txt
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: vid2tweet
+        flowId: post-tweet
+        inputs:
+          tweet_text: "{{ read(outputs.resolve_final_tweet.outputFiles['final_tweet.txt']) | trim }}"
+          video_id: "{{ outputs.fetch_thumbnail.outputs.video_id }}"
+          dry_run: "{{ inputs.dry_run }}"
+          twitter_oauth2_token: "{{ inputs.twitter_oauth2_token }}"
+        wait: true
+        transmitFailed: true
 
       - id: save_result
         type: io.kestra.plugin.jdbc.postgresql.Query
-        url: "jdbc:postgresql://postgres:5432/vid2tweet"
-        username: "kestra"
-        password: "k3str4"
+        url: "{{ vars.db_url }}"
+        username: "{{ vars.db_user }}"
+        password: "{{ vars.db_password }}"
         sql: |
           INSERT INTO pipeline_results (youtube_url, tweet_text, tweet_id, status, created_at)
           VALUES (
             '{{ inputs.youtube_url }}',
-            '{{ read(outputs.post_tweet.outputFiles["tweet_text.txt"]) }}',
-            '{{ read(outputs.post_tweet.outputFiles["tweet_id.txt"]) }}',
+            '{{ outputs.post_tweet.outputs.tweet_text }}',
+            '{{ outputs.post_tweet.outputs.tweet_id }}',
             'POSTED',
             NOW()
           );
     else:
       - id: resolve_rejected_tweet
         type: io.kestra.plugin.scripts.shell.Commands
+        containerImage: "{{ vars.python_image }}"
         inputFiles:
-          tweet.txt: "{{ outputs.validate_tweet.outputFiles['tweet.txt'] }}"
+          tweet.txt: "{{ outputs.generate_tweet.outputs.tweet_file_uri }}"
         env:
           EDITED_TWEET: "{{ outputs.human_approval.onResume.edited_tweet }}"
         commands:
@@ -296,9 +158,9 @@ tasks:
 
       - id: save_rejection
         type: io.kestra.plugin.jdbc.postgresql.Query
-        url: "jdbc:postgresql://postgres:5432/vid2tweet"
-        username: "kestra"
-        password: "k3str4"
+        url: "{{ vars.db_url }}"
+        username: "{{ vars.db_user }}"
+        password: "{{ vars.db_password }}"
         sql: |
           INSERT INTO pipeline_results (youtube_url, tweet_text, tweet_id, status, created_at)
           VALUES (
@@ -310,8 +172,22 @@ tasks:
           );
 
       - id: rejected
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - |
-            echo "Tweet rejected by user. Pipeline terminated without posting."
-            echo "Execution ID: {{ execution.id }}"
+        type: io.kestra.plugin.core.log.Log
+        message: "Tweet rejected by user. Pipeline terminated without posting. Execution ID: {{ execution.id }}"
+
+outputs:
+  - id: generated_tweet_text
+    type: STRING
+    value: "{{ outputs.generate_tweet.outputs.tweet_text }}"
+  - id: generated_tweet_uri
+    type: URI
+    value: "{{ outputs.generate_tweet.outputs.tweet_file_uri }}"
+  - id: transcript_uri
+    type: URI
+    value: "{{ outputs.transcribe_audio.outputs.transcript_uri }}"
+  - id: thumbnail_uri
+    type: URI
+    value: "{{ outputs.fetch_thumbnail.outputs.thumbnail_uri }}"
+  - id: video_id
+    type: STRING
+    value: "{{ outputs.fetch_thumbnail.outputs.video_id }}"

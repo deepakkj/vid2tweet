@@ -93,9 +93,14 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    void fetchExecutions();
+    const initialFetch = setTimeout(() => {
+      void fetchExecutions();
+    }, 0);
     const interval = setInterval(fetchExecutions, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialFetch);
+      clearInterval(interval);
+    };
   }, [fetchExecutions]);
 
   const getStatusColor = (status: string) => {

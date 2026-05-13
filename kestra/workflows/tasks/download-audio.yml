@@ -1,18 +1,23 @@
 # yaml-language-server: $schema=https://api.kestra.io/v1/plugins/schemas/flow
 id: download-audio
 namespace: vid2tweet
+variables:
+  python_image: "python:3.11-slim"
+  max_video_duration_seconds: 1200
+  max_audio_size_bytes: 26214400
 inputs:
+  # Mirror of content-pipeline.yml canonical inputs — keep descriptions in sync.
   - id: youtube_url
     type: STRING
-    description: "YouTube video URL to download audio from"
+    description: "YouTube video URL to process (e.g. https://youtu.be/abc123)"
   - id: youtube_cookies
     type: STRING
-    description: "Raw contents of your YouTube cookies.txt file (Netscape format). Paste the full file contents here."
+    description: "Raw contents of a YouTube cookies.txt file (Netscape format) used to bypass age/login restrictions."
 
 tasks:
   - id: download_and_compress
     type: io.kestra.plugin.scripts.shell.Commands
-    containerImage: "python:3.11-slim"
+    containerImage: "{{ vars.python_image }}"
     inputFiles:
       cookies.txt: "{{ inputs.youtube_cookies }}"
     beforeCommands:
@@ -23,12 +28,12 @@ tasks:
         set -e
         echo "Downloading audio from: {{ inputs.youtube_url }}"
         yt-dlp --no-playlist --retries 5 --cookies cookies.txt \
-          --extractor-args "youtube:player_client=android_testsuite" \
+          --extractor-args "youtube:player_client=android" \
           -x --audio-format wav -o "/tmp/audio.wav" "{{ inputs.youtube_url }}"
 
         DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 /tmp/audio.wav)
         echo "Video duration: $DURATION seconds"
-        if [ "$(echo "$DURATION > 1200" | bc -l)" = "1" ]; then
+        if [ "$(echo "$DURATION > {{ vars.max_video_duration_seconds }}" | bc -l)" = "1" ]; then
           echo "ERROR: Video exceeds 20-minute limit ($DURATION seconds)" >&2
           exit 1
         fi
@@ -38,13 +43,13 @@ tasks:
         FILE_SIZE=$(stat -c%s /tmp/audio_compressed.mp3 2>/dev/null || stat -f%z /tmp/audio_compressed.mp3)
         echo "Compressed audio size: $FILE_SIZE bytes"
 
-        if [ "$FILE_SIZE" -gt 26214400 ]; then
+        if [ "$FILE_SIZE" -gt {{ vars.max_audio_size_bytes }} ]; then
           echo "ERROR: Compressed audio exceeds 25MB limit" >&2
           exit 1
         fi
 
         yt-dlp --no-playlist --cookies cookies.txt \
-          --extractor-args "youtube:player_client=android_testsuite" \
+          --extractor-args "youtube:player_client=android" \
           --print title --print thumbnail "{{ inputs.youtube_url }}" > metadata.txt 2>/dev/null || echo "metadata extraction failed" > metadata.txt
 
         cp /tmp/audio_compressed.mp3 audio_compressed.mp3
@@ -53,3 +58,15 @@ tasks:
     outputFiles:
       - audio_compressed.mp3
       - metadata.txt
+    retry:
+      type: constant
+      interval: PT10S
+      maxAttempts: 2
+
+outputs:
+  - id: audio_file_uri
+    type: URI
+    value: "{{ outputs.download_and_compress.outputFiles['audio_compressed.mp3'] }}"
+  - id: metadata_file_uri
+    type: URI
+    value: "{{ outputs.download_and_compress.outputFiles['metadata.txt'] }}"

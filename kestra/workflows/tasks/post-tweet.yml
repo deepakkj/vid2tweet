@@ -1,14 +1,20 @@
 # yaml-language-server: $schema=https://api.kestra.io/v1/plugins/schemas/flow
 id: post-tweet
 namespace: vid2tweet
+variables:
+  node_image: "node:20-slim"
+  thumbnail_quality: "hqdefault.jpg"
 inputs:
-  - id: tweet_file_uri
+  - id: tweet_text
     type: STRING
-    description: "Kestra internal URI of tweet.txt file"
+    description: "Tweet text to post"
+  - id: video_id
+    type: STRING
+    description: "YouTube video ID used to fetch the thumbnail when posting with OAuth 1.0a"
     required: false
-  - id: thumbnail_file_uri
+  - id: twitter_oauth2_token
     type: STRING
-    description: "Kestra internal URI of thumbnail.jpg file"
+    description: "OAuth 2.0 user access token from Connect X flow"
     required: false
   - id: dry_run
     type: BOOLEAN
@@ -18,32 +24,64 @@ inputs:
 tasks:
   - id: post_to_twitter
     type: io.kestra.plugin.scripts.node.Script
-    containerImage: "node:20-slim"
+    containerImage: "{{ vars.node_image }}"
     beforeCommands:
       - npm install twitter-api-v2 --save --quiet
-    inputFiles:
-      tweet.txt: "{{ inputs.tweet_file_uri }}"
-      thumbnail.jpg: "{{ inputs.thumbnail_file_uri }}"
     script: |
       const { TwitterApi } = require('twitter-api-v2');
       const fs = require('fs');
+      const https = require('https');
 
+      const tweetText = {{ inputs.tweet_text | json }}.trim();
+      const videoId = {{ inputs.video_id | default('') | json }}.trim();
+      const oauth2Token = {{ inputs.twitter_oauth2_token | default('') | json }}.trim();
       const isDryRun = {{ inputs.dry_run }};
-      const tweetText = fs.readFileSync('tweet.txt', 'utf-8').trim();
       const imagePath = 'thumbnail.jpg';
+
+      function writeResult(result) {
+        fs.writeFileSync('tweet_result.json', JSON.stringify(result, null, 2));
+        fs.writeFileSync('tweet_id.txt', `${result.tweet_id}\n`);
+        fs.writeFileSync('tweet_text.txt', `${result.tweet_text}\n`);
+      }
+
+      function downloadFile(url, outputPath) {
+        return new Promise((resolve, reject) => {
+          const file = fs.createWriteStream(outputPath);
+          https.get(url, (response) => {
+            if (response.statusCode !== 200) {
+              reject(new Error(`Thumbnail download failed with status ${response.statusCode}`));
+              return;
+            }
+            response.pipe(file);
+            file.on('finish', () => {
+              file.close(resolve);
+            });
+          }).on('error', (error) => {
+            fs.unlink(outputPath, () => reject(error));
+          });
+        });
+      }
 
       async function postTweet() {
         if (isDryRun) {
-          console.log('DRY RUN MODE: Skipping actual Twitter posting');
-          console.log(`Tweet text: ${tweetText}`);
-          const mockResult = {
-            tweet_id: 'dry_run_' + Date.now(),
+          writeResult({
+            tweet_id: `dry_run_${Date.now()}`,
             tweet_text: tweetText,
             posted_at: new Date().toISOString(),
-            dry_run: true
-          };
-          fs.writeFileSync('tweet_result.json', JSON.stringify(mockResult, null, 2));
-          console.log('Mock result written to tweet_result.json');
+            dry_run: true,
+          });
+          return;
+        }
+
+        if (oauth2Token) {
+          const client = new TwitterApi(oauth2Token);
+          const tweet = await client.v2.tweet({ text: tweetText });
+          writeResult({
+            tweet_id: tweet.data.id,
+            tweet_text: tweetText,
+            posted_at: new Date().toISOString(),
+            dry_run: false,
+          });
           return;
         }
 
@@ -54,31 +92,43 @@ tasks:
           accessSecret: '{{ secret("TWITTER_ACCESS_SECRET") }}'
         });
 
-        // Upload image
-        console.log('Uploading image...');
-        const mediaId = await client.v1.uploadMedia(imagePath);
-        console.log(`Image uploaded, mediaId: ${mediaId}`);
+        const payload = { text: tweetText };
+        if (videoId) {
+          const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/{{ vars.thumbnail_quality }}`;
+          await downloadFile(thumbnailUrl, imagePath);
+          const mediaId = await client.v1.uploadMedia(imagePath);
+          payload.media = { media_ids: [mediaId] };
+        }
 
-        // Post tweet with image
-        const tweet = await client.v2.tweet({
-          text: tweetText,
-          media: { media_ids: [mediaId] }
-        });
-
-        console.log(`Tweet posted! ID: ${tweet.data.id}`);
-
-        const result = {
+        const tweet = await client.v2.tweet(payload);
+        writeResult({
           tweet_id: tweet.data.id,
           tweet_text: tweetText,
           posted_at: new Date().toISOString(),
-          dry_run: false
-        };
-        fs.writeFileSync('tweet_result.json', JSON.stringify(result, null, 2));
+          dry_run: false,
+        });
       }
 
-      postTweet().catch(err => {
-        console.error(`ERROR: Failed to post tweet: ${err.message}`);
+      postTweet().catch((error) => {
+        console.error(`ERROR: Failed to post tweet: ${error.message}`);
         process.exit(1);
       });
     outputFiles:
       - tweet_result.json
+      - tweet_id.txt
+      - tweet_text.txt
+    retry:
+      type: constant
+      interval: PT10S
+      maxAttempts: 2
+
+outputs:
+  - id: tweet_id
+    type: STRING
+    value: "{{ read(outputs.post_to_twitter.outputFiles['tweet_id.txt']) | trim }}"
+  - id: tweet_text
+    type: STRING
+    value: "{{ read(outputs.post_to_twitter.outputFiles['tweet_text.txt']) | trim }}"
+  - id: tweet_result_uri
+    type: URI
+    value: "{{ outputs.post_to_twitter.outputFiles['tweet_result.json'] }}"

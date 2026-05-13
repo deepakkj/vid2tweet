@@ -14,7 +14,8 @@ fi
 
 echo "Deploying flows to $KESTRA_URL..."
 
-for flow in kestra/workflows/*.yml; do
+for flow in kestra/workflows/*.yml kestra/workflows/tasks/*.yml; do
+  [ -f "$flow" ] || continue
   echo "Deploying $flow..."
   namespace=$(python3 -c 'import sys, pathlib; text=pathlib.Path(sys.argv[1]).read_text(); print(next((line.split(":",1)[1].strip() for line in text.splitlines() if line.startswith("namespace:")), ""))' "$flow")
   flow_id=$(python3 -c 'import sys, pathlib; text=pathlib.Path(sys.argv[1]).read_text(); print(next((line.split(":",1)[1].strip() for line in text.splitlines() if line.startswith("id:")), ""))' "$flow")
