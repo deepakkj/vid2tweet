@@ -6,20 +6,20 @@ title Container Diagram — Vid2Tweet
 Person(user, "Content Creator")
 
 System_Boundary(vid2tweet, "Vid2Tweet System") {
-  Container(frontend, "Next.js Frontend", "Next.js 14, TypeScript, Tailwind", "URL input, pipeline status, approval UI")
-  Container(kestra, "Kestra Orchestrator", "Kestra, Docker/Podman", "Workflow engine — runs all AI agent tasks")
-  ContainerDb(postgres, "PostgreSQL", "PostgreSQL 18", "Stores pipeline results")
+  Container(frontend, "Next.js Frontend", "Next.js 14, TypeScript, Tailwind", "Collects inputs, starts OAuth, triggers Kestra, polls status, renders approval UI")
+  Container(kestra, "Kestra Orchestrator", "Kestra", "Runs content-pipeline and all subflows")
+  ContainerDb(postgres, "PostgreSQL", "PostgreSQL 18", "Stores pipeline_results")
 }
 
-System_Ext(groq, "Groq API", "Whisper + Llama 3.3")
-System_Ext(twitter, "Twitter/X API", "Tweet posting")
-System_Ext(youtube, "YouTube", "Video source")
+System_Ext(youtube, "YouTube", "Video source and thumbnail host")
+System_Ext(groq, "Groq API", "Whisper transcription and Llama tweet generation")
+System_Ext(twitter, "X / Twitter API", "OAuth 2.0 text posting and OAuth 1.0a media posting")
 
-Rel(user, frontend, "Uses", "HTTPS")
-Rel(frontend, kestra, "Triggers pipeline, polls status, sends approval", "REST API")
-Rel(kestra, postgres, "Saves pipeline results", "JDBC")
-Rel(kestra, groq, "Transcribes audio, generates tweet", "REST API")
-Rel(kestra, twitter, "Posts tweet with image", "OAuth 1.0a")
-Rel(kestra, youtube, "Downloads audio/video", "yt-dlp")
+Rel(user, frontend, "Submits URL, reviews output, approves/rejects", "Browser")
+Rel(frontend, kestra, "Triggers flow, polls execution, resumes pause, fetches files", "REST + Basic auth")
+Rel(kestra, postgres, "Writes pipeline_results", "JDBC")
+Rel(kestra, groq, "Transcribes audio and generates tweet", "REST")
+Rel(kestra, youtube, "Downloads audio and thumbnail", "yt-dlp / HTTPS")
+Rel(kestra, twitter, "Posts tweet", "OAuth 2.0 or OAuth 1.0a")
 
 @enduml

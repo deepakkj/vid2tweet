@@ -2,46 +2,78 @@
 title Trigger Pipeline Sequence
 
 actor User
-participant "Next.js\nFrontend" as Frontend
-participant "Kestra\nOrchestrator" as Kestra
+participant "Next.js Frontend" as Frontend
+participant "Next.js Auth Routes" as Auth
+participant "Kestra" as Kestra
 participant "Groq API" as Groq
-participant "Twitter/X API" as Twitter
+participant "X API" as Twitter
 database "PostgreSQL" as DB
 
-User -> Frontend: Paste YouTube URL\nClick "Generate Tweet"
-Frontend -> Kestra: POST /api/v1/main/executions/\nvid2tweet/content-pipeline\n{youtube_url}
-Kestra --> Frontend: {executionId}
-Frontend -> Frontend: Redirect to /pipeline/{id}
-
-loop Poll every 5s
-  Frontend -> Kestra: GET /api/v1/main/executions/{id}
-  Kestra --> Frontend: {state: "RUNNING", taskRunList}
+opt Connect X first
+  User -> Frontend: Click Connect X
+  Frontend -> Auth: GET /api/auth/twitter
+  Auth --> User: Redirect to X OAuth 2.0 consent
+  User -> Auth: Return to callback with code
+  Auth --> Frontend: Set cookies
 end
 
-Kestra -> Groq: POST /audio/transcriptions\n(multipart audio file)
-Groq --> Kestra: {text: "transcript..."}
+User -> Frontend: Submit YouTube URL + cookies + dry_run
+Frontend -> Kestra: POST /executions/vid2tweet/content-pipeline
+note right
+FormData includes:
+- youtube_url
+- youtube_cookies
+- dry_run
+- twitter_oauth2_token (if cookie exists)
+end note
+Kestra --> Frontend: executionId
 
-Kestra -> Groq: POST /chat/completions\n(transcript → tweet)
-Groq --> Kestra: {choices[0].message.content}
+loop every 5s until terminal state
+  Frontend -> Kestra: GET /executions/{id}
+  Kestra --> Frontend: state + taskRunList + outputs
+end
 
-Kestra -> Kestra: PAUSE (human_approval)
-Frontend -> Kestra: GET /api/v1/main/executions/{id}
-Kestra --> Frontend: {state: "PAUSED", outputs}
+Kestra -> Groq: Transcribe audio
+Groq --> Kestra: transcript
+Kestra -> Groq: Generate tweet
+Groq --> Kestra: tweet text
 
-Frontend -> User: Show tweet preview + thumbnail\nApprove / Reject buttons
+Kestra --> Frontend: Execution enters PAUSED
+Frontend -> Kestra: GET /executions/{id}/file
+Kestra --> Frontend: thumbnail / tweet artifacts
+Frontend -> User: Show review UI
 
-User -> Frontend: Click "Approve & Post"
-Frontend -> Kestra: POST /api/v1/main/executions/{id}/resume\n{approved: true}
+alt User approves
+  User -> Frontend: Approve with optional edits
+  Frontend -> Kestra: POST /executions/{id}/resume
+  note right
+  FormData includes:
+  - approved=true
+  - edited_tweet?
+  end note
 
-Kestra -> Twitter: Upload image (v1 media upload)
-Twitter --> Kestra: {mediaId}
-Kestra -> Twitter: POST /tweets\n{text, media_ids: [mediaId]}
-Twitter --> Kestra: {tweet_id}
+  alt dry run
+    Kestra -> Kestra: Create mock tweet result
+  else OAuth 2.0 token present
+    Kestra -> Twitter: POST text tweet
+    Twitter --> Kestra: tweet id
+  else OAuth 1.0a fallback
+    Kestra -> Twitter: Upload thumbnail media
+    Twitter --> Kestra: media id
+    Kestra -> Twitter: POST tweet with media
+    Twitter --> Kestra: tweet id
+  end
 
-Kestra -> DB: INSERT INTO pipeline_results
-DB --> Kestra: OK
+  Kestra -> DB: INSERT POSTED result
+  DB --> Kestra: OK
+else User rejects
+  User -> Frontend: Reject
+  Frontend -> Kestra: POST /executions/{id}/resume
+  Kestra -> DB: INSERT REJECTED result
+  DB --> Kestra: OK
+end
 
-Kestra --> Frontend: {state: "SUCCESS"}
-Frontend -> User: "Tweet posted successfully!"
+Kestra --> Frontend: SUCCESS
+Frontend -> User: Show final status
 
 @enduml

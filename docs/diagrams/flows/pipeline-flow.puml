@@ -3,34 +3,54 @@ title Vid2Tweet Pipeline Flow
 
 start
 
-:User pastes YouTube URL;
-:Frontend triggers Kestra pipeline;
+:User submits YouTube URL + cookies;
+:Frontend triggers Kestra content-pipeline;
 
 fork
-  :Download Audio\n(yt-dlp + FFmpeg);
-  :Validate duration ≤ 20 min;
-  :Compress to MP3 <25MB;
+  :extract-image;
+  :Resolve video ID;
+  :Download YouTube thumbnail;
 fork again
-  :Download Video (low quality);
-  :Extract best frame (1/3 duration);
-  :Compress thumbnail <5MB;
+  :download-audio;
+  :Download and compress MP3;
+  :Fail if duration > 20 min or size > 25 MB;
 end fork
 
-:Transcribe Audio\n(Groq Whisper);
+:transcribe-audio;
+:Call Groq Whisper;
 
-:Generate Tweet\n(Groq Llama 3.3 70B);
-:Validate tweet ≤ 280 chars;
+:generate-tweet;
+:Call Groq Llama 3.3;
+:Validate tweet <= 280 chars;
 
-:Human Approval Checkpoint;
-note right: Pipeline PAUSES here\nFrontend shows preview
+:human_approval pause;
+note right
+Pause duration: 24h
+Resume payload:
+- approved
+- edited_tweet
+end note
 
-if (User approves?) then (yes)
-  :Post Tweet to Twitter/X\n(with thumbnail image);
-  :Save result to PostgreSQL;
-  :Pipeline SUCCESS;
+if (Approved?) then (yes)
+  :Resolve final tweet;
+  :Validate edited text <= 280 chars;
+
+  if (Dry run?) then (yes)
+    :Create mock tweet result;
+  else (no)
+    if (OAuth2 token available?) then (yes)
+      :Post text tweet via X OAuth 2.0;
+    else (no)
+      :Download thumbnail by video_id;
+      :Upload media via OAuth 1.0a;
+      :Post tweet with media;
+    endif
+  endif
+
+  :Save POSTED result to PostgreSQL;
 else (no)
-  :Log rejection;
-  :Pipeline terminates\n(no tweet posted);
+  :Resolve rejected tweet text;
+  :Save REJECTED result to PostgreSQL;
 endif
 
 stop

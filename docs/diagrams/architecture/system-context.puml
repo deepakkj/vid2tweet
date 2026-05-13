@@ -3,17 +3,17 @@
 
 title System Context — Vid2Tweet
 
-Person(user, "Content Creator", "Pastes YouTube URL, reviews and approves tweet")
+Person(user, "Content Creator", "Submits a YouTube URL, reviews the generated tweet, and decides whether to publish it")
 
-System(vid2tweet, "Vid2Tweet", "Orchestrates AI pipeline to transform YouTube videos into tweets")
+System(vid2tweet, "Vid2Tweet", "Transforms YouTube videos into reviewable tweets through Kestra workflows")
 
-System_Ext(youtube, "YouTube", "Video hosting platform")
-System_Ext(groq, "Groq API", "AI inference: Whisper transcription + Llama 3.3 tweet generation")
-System_Ext(twitter, "Twitter/X API", "Social media posting platform")
+System_Ext(youtube, "YouTube", "Video source, restricted-access cookies, and static thumbnail host")
+System_Ext(groq, "Groq API", "Whisper transcription + Llama 3.3 generation")
+System_Ext(twitter, "X / Twitter API", "Tweet publishing via OAuth 2.0 or OAuth 1.0a")
 
-Rel(user, vid2tweet, "Submits YouTube URL, approves tweet", "HTTPS/Browser")
-Rel(vid2tweet, youtube, "Downloads audio and video", "yt-dlp / HTTPS")
-Rel(vid2tweet, groq, "Transcribes audio, generates tweet", "REST API")
-Rel(vid2tweet, twitter, "Posts tweet with image", "OAuth 1.0a / REST API")
+Rel(user, vid2tweet, "Starts pipeline, reviews tweet, approves/rejects", "Browser")
+Rel(vid2tweet, youtube, "Downloads audio and thumbnails", "HTTPS / yt-dlp")
+Rel(vid2tweet, groq, "Transcribes and generates tweet text", "REST API")
+Rel(vid2tweet, twitter, "Publishes final tweet", "REST API")
 
 @enduml
