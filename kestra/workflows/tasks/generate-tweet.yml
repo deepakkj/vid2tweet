@@ -37,6 +37,7 @@ tasks:
     retry:
       type: exponential
       interval: PT5S
+      maxInterval: PT1M
       maxAttempts: 3
 
   - id: validate_tweet
@@ -44,16 +45,19 @@ tasks:
     containerImage: "python:3.11-slim"
     commands:
       - |
+        apt-get update && apt-get install -y bash
+        bash -c '
         set -e
-        TWEET=$(echo '{{ outputs.generate_tweet.body }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'].strip())")
+        TWEET=$(echo '{{ outputs.generate_tweet.body }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[\'choices\'][0][\'message\'][\'content\'].strip())")
         echo "$TWEET" > tweet.txt
-        TWEET_LEN=$(wc -m < tweet.txt | tr -d ' ')
+        TWEET_LEN=$(wc -m < tweet.txt | tr -d " ")
         echo "Tweet length: $TWEET_LEN characters"
         if [ "$TWEET_LEN" -gt {{ vars.max_tweet_chars }} ]; then
           echo "ERROR: Tweet exceeds {{ vars.max_tweet_chars }} characters ($TWEET_LEN)" >&2
           exit 1
         fi
         echo "Tweet generated successfully: $TWEET_LEN characters"
+        '
     outputFiles:
       - tweet.txt
 

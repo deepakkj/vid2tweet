@@ -2,7 +2,6 @@
 id: extract-image
 namespace: vid2tweet
 variables:
-  python_image: "python:3.11-slim"
   thumbnail_quality: "hqdefault.jpg"
 inputs:
   # Mirror of content-pipeline.yml canonical inputs — keep descriptions in sync.
@@ -11,11 +10,22 @@ inputs:
     description: "YouTube video URL to process (e.g. https://youtu.be/abc123)"
 
 tasks:
+
   - id: extract_video_id
     type: io.kestra.plugin.scripts.shell.Commands
-    containerImage: "{{ vars.python_image }}"
+    containerImage: "alpine"
     commands:
-      - python3 -c 'import re,sys; url="{{ inputs.youtube_url }}"; m=re.search(r"(?:v=|youtu\.be/|shorts/)([A-Za-z0-9_-]{11})", url); print(m.group(1)) if m else sys.exit(1)' > video_id.txt
+      - |
+        set -e
+        URL="{{ inputs.youtube_url }}"
+        if echo "$URL" | grep -q "youtu.be/"; then
+          VIDEO_ID=$(echo "$URL" | sed 's|.*youtu\.be/||' | sed 's|[?&].*||' | tr -d '[:space:]')
+        elif echo "$URL" | grep -q "shorts/"; then
+          VIDEO_ID=$(echo "$URL" | sed 's|.*shorts/||' | sed 's|[?&].*||' | tr -d '[:space:]')
+        else
+          VIDEO_ID=$(echo "$URL" | sed 's|.*[?&]v=||' | sed 's|[?&].*||' | tr -d '[:space:]')
+        fi
+        echo "$VIDEO_ID" > video_id.txt
     outputFiles:
       - video_id.txt
 

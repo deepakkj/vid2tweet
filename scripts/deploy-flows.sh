@@ -14,7 +14,15 @@ fi
 
 echo "Deploying flows to $KESTRA_URL..."
 
-for flow in kestra/workflows/*.yml kestra/workflows/tasks/*.yml; do
+# Subflows must be deployed before the orchestrator that references them.
+# Explicit ordering: tasks/* first, then top-level orchestrators.
+for flow in \
+  kestra/workflows/tasks/download-audio.yml \
+  kestra/workflows/tasks/extract-image.yml \
+  kestra/workflows/tasks/transcribe-audio.yml \
+  kestra/workflows/tasks/generate-tweet.yml \
+  kestra/workflows/tasks/post-tweet.yml \
+  kestra/workflows/content-pipeline.yml; do
   [ -f "$flow" ] || continue
   echo "Deploying $flow..."
   namespace=$(python3 -c 'import sys, pathlib; text=pathlib.Path(sys.argv[1]).read_text(); print(next((line.split(":",1)[1].strip() for line in text.splitlines() if line.startswith("namespace:")), ""))' "$flow")

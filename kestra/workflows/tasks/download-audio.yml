@@ -22,25 +22,27 @@ tasks:
       cookies.txt: "{{ inputs.youtube_cookies }}"
     beforeCommands:
       - pip install yt-dlp --quiet
-      - DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y ffmpeg bc --quiet
+      - DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y ffmpeg --quiet
     commands:
       - |
         set -e
         echo "Downloading audio from: {{ inputs.youtube_url }}"
+
+        # Fail fast if video exceeds duration limit (checked before download starts).
+        # Output directly as MP3 with target sample rate/bitrate via postprocessor args.
+        # Extract metadata (title + thumbnail URL) in the same yt-dlp call — no second network round-trip.
         yt-dlp --no-playlist --retries 5 --cookies cookies.txt \
-          --extractor-args "youtube:player_client=android" \
-          -x --audio-format wav -o "/tmp/audio.wav" "{{ inputs.youtube_url }}"
+          --extractor-args "youtube:player_client=mweb" \
+          --match-filter "duration <= {{ vars.max_video_duration_seconds }}" \
+          --print "%(title)s" --print "%(thumbnail)s" \
+          -x --audio-format mp3 \
+          --postprocessor-args "FFmpegExtractAudio:-ar 16000 -ac 1 -b:a 32k" \
+          -o "audio_compressed.%(ext)s" "{{ inputs.youtube_url }}" \
+          > metadata.txt || { echo "ERROR: Download failed or video exceeds 20-minute limit" >&2; touch metadata.txt; exit 1; }
 
-        DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 /tmp/audio.wav)
-        echo "Video duration: $DURATION seconds"
-        if [ "$(echo "$DURATION > {{ vars.max_video_duration_seconds }}" | bc -l)" = "1" ]; then
-          echo "ERROR: Video exceeds 20-minute limit ($DURATION seconds)" >&2
-          exit 1
-        fi
+        [ -f audio_compressed.mp3 ] || { echo "ERROR: audio_compressed.mp3 not found after download" >&2; exit 1; }
 
-        ffmpeg -i /tmp/audio.wav -ar 16000 -ac 1 -b:a 32k /tmp/audio_compressed.mp3 -y
-
-        FILE_SIZE=$(stat -c%s /tmp/audio_compressed.mp3 2>/dev/null || stat -f%z /tmp/audio_compressed.mp3)
+        FILE_SIZE=$(stat -c%s audio_compressed.mp3 2>/dev/null || stat -f%z audio_compressed.mp3)
         echo "Compressed audio size: $FILE_SIZE bytes"
 
         if [ "$FILE_SIZE" -gt {{ vars.max_audio_size_bytes }} ]; then
@@ -48,12 +50,7 @@ tasks:
           exit 1
         fi
 
-        yt-dlp --no-playlist --cookies cookies.txt \
-          --extractor-args "youtube:player_client=android" \
-          --print title --print thumbnail "{{ inputs.youtube_url }}" > metadata.txt 2>/dev/null || echo "metadata extraction failed" > metadata.txt
-
-        cp /tmp/audio_compressed.mp3 audio_compressed.mp3
-
+        [ -f metadata.txt ] || touch metadata.txt
         echo "Download and compression complete!"
     outputFiles:
       - audio_compressed.mp3

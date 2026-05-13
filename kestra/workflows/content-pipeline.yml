@@ -3,9 +3,6 @@ id: content-pipeline
 namespace: vid2tweet
 variables:
   python_image: "python:3.11-slim"
-  db_url: "jdbc:postgresql://postgres:5432/vid2tweet"
-  db_user: "kestra"
-  db_password: "k3str4"
   max_tweet_chars: 280
 inputs:
   # Canonical input definitions — subflows mirror these; keep descriptions in sync.
@@ -125,9 +122,9 @@ tasks:
 
       - id: save_result
         type: io.kestra.plugin.jdbc.postgresql.Query
-        url: "{{ vars.db_url }}"
-        username: "{{ vars.db_user }}"
-        password: "{{ vars.db_password }}"
+        url: "{{ secret('DB_URL') }}"
+        username: "{{ secret('DB_USER') }}"
+        password: "{{ secret('DB_PASSWORD') }}"
         sql: |
           INSERT INTO pipeline_results (youtube_url, tweet_text, tweet_id, status, created_at)
           VALUES (
@@ -158,9 +155,9 @@ tasks:
 
       - id: save_rejection
         type: io.kestra.plugin.jdbc.postgresql.Query
-        url: "{{ vars.db_url }}"
-        username: "{{ vars.db_user }}"
-        password: "{{ vars.db_password }}"
+        url: "{{ secret('DB_URL') }}"
+        username: "{{ secret('DB_USER') }}"
+        password: "{{ secret('DB_PASSWORD') }}"
         sql: |
           INSERT INTO pipeline_results (youtube_url, tweet_text, tweet_id, status, created_at)
           VALUES (

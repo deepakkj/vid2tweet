@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   };
 
   // Fetch the connected user's screen name for display
-  let username = 'connected';
+  let username = '';
   try {
     const userRes = await fetch('https://api.twitter.com/2/users/me', {
       headers: { Authorization: `Bearer ${access_token}` },

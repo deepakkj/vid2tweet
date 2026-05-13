@@ -17,11 +17,25 @@ export default function HomePage() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [executionsError, setExecutionsError] = useState('');
+  const [isCookiesAccordianOpen, setisCookiesAccordianOpen] = useState(true);
 
   const validateYoutubeUrl = (url: string) => {
     const regex = /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]+/;
     return regex.test(url);
   };
+
+  // Persist cookies across page navigations within the same browser session.
+  useEffect(() => {
+    const saved = sessionStorage.getItem('yt_cookies');
+    if (saved) {
+      setCookies(saved);
+      setisCookiesAccordianOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem('yt_cookies', cookies);
+  }, [cookies]);
 
   useEffect(() => {
     fetch('/api/auth/twitter/status')
@@ -176,18 +190,49 @@ export default function HomePage() {
                 disabled={loading}
                 className="px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
-              <textarea
-                placeholder="Paste your YouTube cookies.txt contents here (Netscape format)"
-                value={cookies}
-                onChange={(e) => {
-                  setCookies(e.target.value);
-                  if (error) setError('');
-                }}
-                disabled={loading}
-                rows={6}
-                className="px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-xs transition-all"
-                spellCheck={false}
-              />
+              <div className="rounded-lg border border-gray-300 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setisCookiesAccordianOpen((o) => !o)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
+                >
+                  <span className="flex items-center gap-2">
+                    YouTube Cookies
+                    {cookies && !isCookiesAccordianOpen && (
+                      <span className="text-[10px] font-semibold text-green-600 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">
+                        Saved in session
+                      </span>
+                    )}
+                  </span>
+                  <svg
+                    className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isCookiesAccordianOpen ? 'rotate-180' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {isCookiesAccordianOpen && (
+                  <div className="relative border-t border-gray-300">
+                    <textarea
+                      placeholder="Paste your YouTube cookies.txt contents here (Netscape format)"
+                      value={cookies}
+                      onChange={(e) => {
+                        setCookies(e.target.value);
+                        if (error) setError('');
+                      }}
+                      disabled={loading}
+                      rows={6}
+                      className="w-full px-4 py-3 border-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 font-mono text-xs transition-all resize-none"
+                      spellCheck={false}
+                    />
+                    {cookies && (
+                      <span className="absolute top-2 right-2 text-[10px] font-semibold text-green-600 bg-green-50 border border-green-200 rounded px-1.5 py-0.5 pointer-events-none">
+                        Saved in session
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
               <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
                 <input
                   type="checkbox"

@@ -54,8 +54,17 @@ cp .env.example .env
 # 4. Start all services
 podman compose up -d
 
-# 5. Deploy Kestra workflows
+# 5. Deploy Kestra workflows automatically
 ./scripts/deploy-flows.sh
+ # or deploy Kestra workflows manually
+ 
+# If you're deploying manually via the UI (not the script), the order is:
+# 1. download-audio.yml
+# 2. extract-image.yml
+# 3. transcribe-audio.yml
+# 4. generate-tweet.yml
+# 5. post-tweet.yml
+# 6. content-pipeline.yml ← last, after all subflows exist
 
 # 6. Start the frontend
 cd frontend && npm install && npm run dev

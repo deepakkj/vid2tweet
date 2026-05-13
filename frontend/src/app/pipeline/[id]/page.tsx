@@ -6,13 +6,14 @@ import { KESTRA_BASE_URL, getExecution, getKestraHeaders, resumeExecution } from
 import type { Execution } from '@/types/kestra';
 
 const STEPS = [
-  { id: 'fetch_thumbnail', label: 'Extract Image' },
-  { id: 'download_audio', label: 'Download Audio' },
+  { id: 'fetch_thumbnail', label: 'Extract Image', parallel: true },
+  { id: 'download_audio', label: 'Download Audio', parallel: true },
   { id: 'transcribe_audio', label: 'Transcribe Audio' },
   { id: 'generate_tweet', label: 'Generate Tweet' },
-  { id: 'resolve_final_tweet', label: 'Finalize Tweet' },
   { id: 'human_approval', label: 'Human Approval' },
-  { id: 'post_tweet', label: 'Post Tweet' }
+  { id: 'resolve_final_tweet', label: 'Finalize Tweet' },
+  { id: 'post_tweet', label: 'Post Tweet' },
+  { id: 'save_result', label: 'Save Result' },
 ];
 
 type OutputFiles = Record<string, string>;
@@ -331,9 +332,16 @@ export default function PipelinePage() {
                     <span className={isRunning ? 'animate-spin' : ''}>{info.icon}</span>
                   </div>
                   <div className="flex-1">
-                    <p className={`font-medium ${info.state === 'PENDING' ? 'text-gray-400' : 'text-gray-900'}`}>
-                      {step.label}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className={`font-medium ${info.state === 'PENDING' ? 'text-gray-400' : 'text-gray-900'}`}>
+                        {step.label}
+                      </p>
+                      {'parallel' in step && step.parallel && (
+                        <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-200 text-[10px] font-bold uppercase rounded tracking-wider">
+                          parallel
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">{info.state}</p>
                   </div>
                 </div>
