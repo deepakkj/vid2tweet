@@ -1,78 +1,100 @@
 # Local Setup Guide
 
-Follow these steps to get Vid2Tweet running on your local machine.
+Follow these steps to run Vid2Tweet locally.
 
 ## Prerequisites
 
-- **Podman Desktop** or **Docker Desktop**: For running the containerized infrastructure.
-- **Node.js 20+**: To run the Next.js frontend.
-- **Git**: To clone the repository.
-- **API Keys**:
-    - [Groq API Key](https://console.groq.com): For transcription and tweet generation.
-    - [Twitter Developer Account](https://developer.twitter.com): For posting tweets. You'll need API Key, API Secret, Access Token, and Access Secret (with write permissions).
+- Podman Desktop or Docker Desktop
+- Node.js 20+
+- Git
+- Groq API key
+- X developer credentials
 
-## Step-by-Step Setup
-
-### 1. Clone the Repository
+## 1. Clone the Repository
 
 ```bash
 git clone <your-repo-url>
 cd ai_content_creator_automation
 ```
 
-### 2. Configure Environment Variables
-
-Create a `.env` file from the template:
+## 2. Configure Environment Variables
 
 ```bash
 cp .env.example .env
 ```
 
-Edit the `.env` file and fill in your API keys:
+Fill in at least these values:
 
 ```env
-GROQ_API_KEY=gsk_...
-TWITTER_API_KEY=...
-TWITTER_API_SECRET=...
-TWITTER_ACCESS_TOKEN=...
-TWITTER_ACCESS_SECRET=...
+GROQ_API_KEY=
+TWITTER_API_KEY=
+TWITTER_API_SECRET=
+TWITTER_ACCESS_TOKEN=
+TWITTER_ACCESS_SECRET=
+TWITTER_CLIENT_ID=
+TWITTER_CLIENT_SECRET=
+
+DB_URL=jdbc:postgresql://postgres:5432/vid2tweet
+DB_USER=kestra
+DB_PASSWORD=k3str4
+
+NEXT_PUBLIC_KESTRA_URL=http://localhost:8080
+NEXT_PUBLIC_KESTRA_USERNAME=admin@kestra.io
+NEXT_PUBLIC_KESTRA_PASSWORD=Kestra123
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### 3. Encode Secrets for Kestra
+### Variable Notes
 
-Kestra requires secrets to be in a specific format for this setup. Run the provided script:
+- `TWITTER_CLIENT_ID` and `TWITTER_CLIENT_SECRET` power the Connect X OAuth 2.0 flow in the frontend
+- `TWITTER_API_*` and `TWITTER_ACCESS_*` power the OAuth 1.0a fallback path in Kestra
+- `NEXT_PUBLIC_KESTRA_*` is used by the frontend when calling Kestra in local development
+- `DB_URL` points to the `vid2tweet` application database used by the pipeline result inserts; Kestra itself still uses its own `kestra` database internally
+
+## 3. Encode Kestra Secrets
 
 ```bash
-chmod +x scripts/encode-secrets.sh
 ./scripts/encode-secrets.sh
 ```
 
-This creates an `.env.encoded` file which is used by the Docker Compose setup.
+This generates `.env.encoded`, which `docker-compose.yml` loads into Kestra.
 
-### 4. Start Infrastructure
-
-Launch the database and Kestra:
+## 4. Start Infrastructure
 
 ```bash
 podman compose up -d
 ```
 
-Verify that the services are running:
-- **Kestra UI**: [http://localhost:8080](http://localhost:8080)
-- **PostgreSQL**: `localhost:5432`
-
-### 5. Deploy Workflows
-
-Upload the YAML flow definitions to Kestra:
+If you use Podman on macOS, make sure the VM is running:
 
 ```bash
-chmod +x scripts/deploy-flows.sh
+podman machine start
+```
+
+`./scripts/deploy-flows.sh` also attempts to prepare `/tmp/kestra-wd/tmp` on the Podman VM because Kestra's task runner needs that path.
+
+## 5. Deploy Kestra Flows
+
+```bash
 ./scripts/deploy-flows.sh
 ```
 
-### 6. Start the Frontend
+The script:
 
-Install dependencies and start the development server:
+- deploys subflows before the main orchestrator
+- uses PUT first and falls back to POST when a flow does not exist yet
+- reads namespace and flow ID directly from each YAML file
+
+Manual deployment order:
+
+1. `kestra/workflows/tasks/download-audio.yml`
+2. `kestra/workflows/tasks/extract-image.yml`
+3. `kestra/workflows/tasks/transcribe-audio.yml`
+4. `kestra/workflows/tasks/generate-tweet.yml`
+5. `kestra/workflows/tasks/post-tweet.yml`
+6. `kestra/workflows/content-pipeline.yml`
+
+## 6. Start the Frontend
 
 ```bash
 cd frontend
@@ -80,29 +102,48 @@ npm install
 npm run dev
 ```
 
-The app should now be accessible at [http://localhost:3000](http://localhost:3000).
+## 7. Verify the Stack
 
-## Port Reference
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Kestra UI/API: [http://localhost:8080](http://localhost:8080)
+- PostgreSQL: `localhost:5432`
 
-| Service | Port | Description |
-|---------|------|-------------|
-| Frontend | 3000 | Next.js Web Interface |
-| Kestra | 8080 | Workflow UI & API |
-| PostgreSQL | 5432 | Database |
+## Local Usage Notes
+
+- Paste the raw contents of your YouTube `cookies.txt` file in the UI for restricted videos
+- Use **Connect X** if you want the OAuth 2.0 posting path
+- Use **Dry run** to validate the full workflow without publishing to X
+- The approval page fetches tweet text and thumbnails from Kestra artifacts, so Kestra must stay reachable while reviewing
+- The frontend includes small server-side routes for OAuth and safe token forwarding even though Kestra remains the main workflow backend
+
+## Local Security Caveat
+
+`NEXT_PUBLIC_KESTRA_USERNAME` and `NEXT_PUBLIC_KESTRA_PASSWORD` are exposed to the frontend in this development setup so the browser can talk to Kestra directly. Keep that pattern local-only; for production, move Kestra access behind server-only routes or a dedicated backend proxy.
 
 ## Troubleshooting
 
-### Podman / Docker Issues
-- Ensure the Docker socket is accessible. The `docker-compose.yml` mounts `/var/run/docker.sock`.
-- If using Podman on macOS, you may need to ensure the machine is started: `podman machine start`.
+### Kestra not reachable from frontend
 
-### CORS Errors
-- Kestra is configured to allow CORS via `MICRONAUT_SERVER_CORS_ENABLED: "true"` in `docker-compose.yml`.
-- If you change ports, update the CORS configuration accordingly.
+- Confirm `NEXT_PUBLIC_KESTRA_URL` points to the Kestra instance
+- Confirm the Basic auth values match the local Kestra config in `docker-compose.yml`
 
-### Kestra Startup
-- Kestra might take a minute to initialize the database schema on first run. Check logs with `podman compose logs -f kestra`.
+### Flow deployment issues
 
-### API Key Errors
-- Ensure your Twitter app has "Read and Write" permissions enabled in the Developer Portal.
-- Double-check that `GROQ_API_KEY` is valid by testing a simple curl request to their API.
+- Wait for Kestra to finish booting before running `./scripts/deploy-flows.sh`
+- Inspect logs with `podman compose logs -f kestra`
+
+### OAuth connection issues
+
+- Confirm `NEXT_PUBLIC_APP_URL` matches your local frontend URL
+- Confirm the X developer app redirect URI matches `/api/auth/twitter/callback`
+- Requested scopes are `tweet.write users.read offline.access`
+
+### Posting works only in dry run
+
+- Check whether you connected an X account through OAuth 2.0
+- If using the OAuth 1.0a fallback, verify `TWITTER_API_*` and `TWITTER_ACCESS_*` secrets are present and encoded into Kestra
+
+### Download failures
+
+- Videos longer than 20 minutes are rejected by design
+- Compressed audio larger than 25 MB is rejected by design

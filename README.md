@@ -1,109 +1,166 @@
 # Vid2Tweet — YouTube to Tweet AI Pipeline
 
-> Transform any YouTube video into a tweet with AI-powered transcription, generation, and human approval — all orchestrated by Kestra.
+> Transform a YouTube video into a reviewable tweet with Kestra orchestration, Groq models, human approval, and flexible X posting modes.
 
 ![Demo](docs/assets/demo.gif)
 
-## How It Works
+## What It Does
 
-1. **Paste a YouTube URL** → Vid2Tweet downloads and transcribes the audio
-2. **AI generates a tweet** → Groq Llama 3.3 crafts an engaging tweet from the transcript
-3. **You review and approve** → Preview the tweet + thumbnail, edit if needed
-4. **Tweet is posted** → Automatically published to Twitter/X with the extracted thumbnail
+Vid2Tweet turns a single YouTube URL into a tweet draft and approval workflow:
+
+1. Downloads and compresses video audio
+2. Fetches the YouTube thumbnail
+3. Transcribes audio with Groq Whisper
+4. Generates a tweet with Groq Llama 3.3
+5. Pauses for human review and optional editing
+6. Posts to X or saves a dry-run result
+7. Stores the outcome in PostgreSQL
+
+The app still uses Kestra as the workflow engine, but the frontend also includes a small set of Next.js server routes for OAuth handshakes and safe token forwarding during pipeline trigger.
+
+## Current Flow
+
+```text
+YouTube URL + cookies
+        │
+        ▼
+Frontend (Next.js)
+        │  trigger / poll / resume
+        ▼
+Kestra content-pipeline
+   ├─ extract-image
+   ├─ download-audio
+   ├─ transcribe-audio
+   ├─ generate-tweet
+   ├─ human approval pause
+   └─ post-tweet + save result
+        │
+        ├─ Groq API
+        ├─ X API
+        └─ PostgreSQL
+```
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Orchestration | [Kestra](https://kestra.io) — visual workflow engine |
-| Frontend | Next.js (App Router, TypeScript, Tailwind CSS) |
-| Transcription | Groq Whisper (whisper-large-v3) |
-| Tweet Generation | Groq Llama 3.3 70B |
-| Social Posting | Twitter/X API v2 (twitter-api-v2) |
-| Database | PostgreSQL (via Kestra JDBC plugin) |
-| Infrastructure | Podman + Docker Compose |
+| Orchestration | [Kestra](https://kestra.io) |
+| Frontend | Next.js 14, TypeScript, Tailwind CSS |
+| Transcription | Groq Whisper (`whisper-large-v3`) |
+| Tweet Generation | Groq Llama 3.3 (`llama-3.3-70b-versatile`) |
+| Social Posting | X/Twitter API via `twitter-api-v2` |
+| Database | PostgreSQL |
+| Infrastructure | Podman/Docker Compose |
 
-## Quick Start
+## Posting Modes
 
-### Prerequisites
-- [Podman Desktop](https://podman-desktop.io/) or Docker
+Vid2Tweet currently supports three posting paths:
+
+- **Dry run**: generate everything, skip the real X post, and save a mock result
+- **Connect X (OAuth 2.0)**: connect a user account from the frontend and post text tweets through the OAuth token stored in an httpOnly cookie
+- **OAuth 1.0a app credentials**: fallback path using Kestra secrets; this is also the path that uploads the YouTube thumbnail as media
+
+## Prerequisites
+
+- Podman Desktop or Docker Desktop
 - Node.js 20+
-- API keys: [Groq](https://console.groq.com) + [Twitter Developer](https://developer.twitter.com)
-```bash
-GROQ_API_KEY: This is Grok API Key
-TWITTER_API_KEY: This is the "Consumer Key" under OAuth 1.0 Keys.
-TWITTER_API_SECRET: This is the "Consumer Secret" under OAuth 1.0 Keys.
-TWITTER_ACCESS_TOKEN: This is the "Access Token" under OAuth 1.0 Keys (not the OAuth 2.0 section).
-TWITTER_ACCESS_SECRET: This is the "Access Token Secret" under OAuth 1.0 Keys (you may need to click "Generate" to reveal it if not shown).
+- Git
+- A Groq API key
+- X developer credentials
+
+Required environment variables in `.env`:
+
+```env
+GROQ_API_KEY=
+TWITTER_API_KEY=
+TWITTER_API_SECRET=
+TWITTER_ACCESS_TOKEN=
+TWITTER_ACCESS_SECRET=
+TWITTER_CLIENT_ID=
+TWITTER_CLIENT_SECRET=
+
+DB_URL=jdbc:postgresql://postgres:5432/vid2tweet
+DB_USER=kestra
+DB_PASSWORD=k3str4
+
+NEXT_PUBLIC_KESTRA_URL=http://localhost:8080
+NEXT_PUBLIC_KESTRA_USERNAME=admin@kestra.io
+NEXT_PUBLIC_KESTRA_PASSWORD=Kestra123
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### Setup
+## Quick Start
 
 ```bash
 # 1. Clone the repository
 git clone <repo-url>
 cd ai_content_creator_automation
 
-# 2. Configure API keys
+# 2. Configure environment variables
 cp .env.example .env
-# Edit .env with your actual API keys
 
 # 3. Encode secrets for Kestra
 ./scripts/encode-secrets.sh
 
-# 4. Start all services
+# 4. Start infrastructure
 podman compose up -d
 
-# 5. Deploy Kestra workflows automatically
+# 5. Deploy flows in the correct order
 ./scripts/deploy-flows.sh
- # or deploy Kestra workflows manually
- 
-# If you're deploying manually via the UI (not the script), the order is:
-# 1. download-audio.yml
-# 2. extract-image.yml
-# 3. transcribe-audio.yml
-# 4. generate-tweet.yml
-# 5. post-tweet.yml
-# 6. content-pipeline.yml ← last, after all subflows exist
 
 # 6. Start the frontend
-cd frontend && npm install && npm run dev
+cd frontend
+npm install
+npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to use the app.
-Open [http://localhost:8080](http://localhost:8080) to see the Kestra workflow UI.
+Open:
 
-## Architecture Overview
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Kestra UI/API: [http://localhost:8080](http://localhost:8080)
 
-Vid2Tweet uses Kestra as the sole backend — no custom server needed. The frontend calls Kestra's REST API directly.
+## Manual Flow Deployment Order
 
-```
-YouTube URL → Kestra Pipeline → Human Approval → Twitter/X
-                    ↓
-              PostgreSQL (results)
-```
+If you deploy flows manually in Kestra, deploy subflows before the orchestrator:
 
-See [Architecture & Design](docs/ARCHITECTURE.md) for detailed diagrams.
+1. `kestra/workflows/tasks/download-audio.yml`
+2. `kestra/workflows/tasks/extract-image.yml`
+3. `kestra/workflows/tasks/transcribe-audio.yml`
+4. `kestra/workflows/tasks/generate-tweet.yml`
+5. `kestra/workflows/tasks/post-tweet.yml`
+6. `kestra/workflows/content-pipeline.yml`
+
+## How To Use The App
+
+1. Paste a YouTube URL
+2. Paste the raw contents of your `cookies.txt` file for YouTube access
+3. Optionally connect your X account from the banner
+4. Optionally enable **Dry run**
+5. Generate the pipeline
+6. Review the tweet and thumbnail on the pipeline page
+7. Approve, edit, or reject
+
+## Operational Notes
+
+- The audio download flow rejects videos longer than **20 minutes**
+- Compressed audio must stay under **25 MB**
+- The human approval step pauses for **24 hours** and fails if never resumed
+- The frontend polls Kestra for execution updates and fetches artifacts through Kestra's file API
+- Final outcomes are saved to the `pipeline_results` table in PostgreSQL
+
+## Security Note
+
+This repo is configured for local development speed. In the current setup, `NEXT_PUBLIC_KESTRA_*` values are used by the frontend when calling Kestra. That is acceptable for a local demo stack, but production deployments should move Kestra credentials to server-only routes or a dedicated proxy layer instead of exposing admin credentials to the browser.
 
 ## Documentation
 
 - [Architecture & Design](docs/ARCHITECTURE.md)
+- [Flow Reference](docs/FLOWS.md)
+- [Documentation Index](docs/README.md)
 - [Local Setup Guide](docs/setup/LOCAL_SETUP.md)
 - [Contributing](docs/CONTRIBUTING.md)
-- [Future Scope & Roadmap](docs/ROADMAP.md)
+- [Roadmap](docs/ROADMAP.md)
 - [Design System](DESIGN.md)
-
-## Coming Soon
-
-- LinkedIn Posts
-- Blog Articles
-- YouTube Shorts
-- Instagram Reels
-- TikTok Videos
-- Growth Prediction
-- AI Memory
-- A/B Testing
-- Brand-Safe Scoring
 
 ## License
 
