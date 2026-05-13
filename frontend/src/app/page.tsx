@@ -8,6 +8,8 @@ import type { Execution } from '@/types/kestra';
 export default function HomePage() {
   const router = useRouter();
   const [url, setUrl] = useState('');
+  const [cookies, setCookies] = useState('');
+  const [dryRun, setDryRun] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [executions, setExecutions] = useState<Execution[]>([]);
@@ -24,11 +26,15 @@ export default function HomePage() {
       setError('Please enter a valid YouTube URL');
       return;
     }
+    if (!cookies.trim()) {
+      setError('Please paste your YouTube cookies.txt contents');
+      return;
+    }
     setError('');
     setLoading(true);
 
     try {
-      const res = await triggerPipeline(url);
+      const res = await triggerPipeline(url, cookies, dryRun);
       router.push(`/pipeline/${res.id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to trigger pipeline');
@@ -94,7 +100,7 @@ export default function HomePage() {
 
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 mb-12">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex flex-col gap-4">
               <input
                 type="text"
                 placeholder="Paste YouTube URL here..."
@@ -104,8 +110,30 @@ export default function HomePage() {
                   if (error) setError('');
                 }}
                 disabled={loading}
-                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
+              <textarea
+                placeholder="Paste your YouTube cookies.txt contents here (Netscape format)"
+                value={cookies}
+                onChange={(e) => {
+                  setCookies(e.target.value);
+                  if (error) setError('');
+                }}
+                disabled={loading}
+                rows={6}
+                className="px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-xs transition-all"
+                spellCheck={false}
+              />
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={dryRun}
+                  onChange={(e) => setDryRun(e.target.checked)}
+                  disabled={loading}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                Dry run (skip actual Twitter posting)
+              </label>
               <button
                 type="submit"
                 disabled={loading}

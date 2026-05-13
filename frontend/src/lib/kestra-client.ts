@@ -19,9 +19,11 @@ export function getKestraHeaders(headers?: Record<string, string>) {
   };
 }
 
-export async function triggerPipeline(youtubeUrl: string): Promise<{ id: string }> {
+export async function triggerPipeline(youtubeUrl: string, youtubeCookies: string, dryRun = false): Promise<{ id: string }> {
   const formData = new FormData();
   formData.append('youtube_url', youtubeUrl);
+  formData.append('youtube_cookies', youtubeCookies);
+  formData.append('dry_run', String(dryRun));
   const res = await fetch(`${KESTRA_BASE_URL}/api/v1/main/executions/${NAMESPACE}/${FLOW_ID}`, {
     method: 'POST',
     body: formData,
@@ -48,14 +50,15 @@ export async function resumeExecution(
   approved: boolean,
   editedTweet?: string
 ) {
-  const body: Record<string, unknown> = { approved };
-  if (editedTweet) body.edited_tweet = editedTweet;
+  const formData = new FormData();
+  formData.append('approved', String(approved));
+  if (editedTweet) formData.append('edited_tweet', editedTweet);
   const res = await fetch(
     `${KESTRA_BASE_URL}/api/v1/main/executions/${executionId}/resume`,
     {
       method: 'POST',
-      headers: getKestraHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(body),
+      headers: getKestraHeaders(),
+      body: formData,
     }
   );
   if (!res.ok) {

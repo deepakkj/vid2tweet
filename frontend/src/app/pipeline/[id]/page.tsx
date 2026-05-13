@@ -133,7 +133,7 @@ export default function PipelinePage() {
 
         if (uri && typeof uri === 'string') {
           try {
-            const res = await fetch(`${KESTRA_BASE_URL}/api/v1/main/executions/${id}/file?filePath=${encodeURIComponent(uri)}`, {
+            const res = await fetch(`${KESTRA_BASE_URL}/api/v1/main/executions/${id}/file?path=${encodeURIComponent(uri)}`, {
               headers: getKestraHeaders(),
             });
             if (res.ok) {

@@ -33,6 +33,7 @@ tasks:
 
   - id: validate_tweet
     type: io.kestra.plugin.scripts.shell.Commands
+    containerImage: "python:3.11-slim"
     commands:
       - |
         set -e

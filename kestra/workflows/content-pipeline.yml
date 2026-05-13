@@ -5,6 +5,13 @@ inputs:
   - id: youtube_url
     type: STRING
     description: "YouTube video URL to process"
+  - id: youtube_cookies
+    type: STRING
+    description: "Raw contents of your YouTube cookies.txt file (Netscape format). Paste the full file contents here."
+  - id: dry_run
+    type: BOOLEAN
+    description: "If true, skip actual Twitter posting (use when Twitter API lacks write access)"
+    defaults: false
 
 tasks:
   - id: extract_video_id
@@ -25,15 +32,18 @@ tasks:
       - id: download_audio
         type: io.kestra.plugin.scripts.shell.Commands
         containerImage: "python:3.11-slim"
+        inputFiles:
+          cookies.txt: "{{ inputs.youtube_cookies }}"
         beforeCommands:
           - pip install yt-dlp --quiet
-          - apt-get update -qq && apt-get install -y ffmpeg bc --quiet
+          - DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y ffmpeg bc --quiet
         commands:
           - |
             set -e
             echo "Downloading audio from: {{ inputs.youtube_url }}"
-            # Use iOS client to bypass YouTube bot detection without requiring login
-            yt-dlp --no-playlist --extractor-args "youtube:player_client=ios" -x --audio-format wav -o "/tmp/audio.wav" "{{ inputs.youtube_url }}"
+            yt-dlp --no-playlist --retries 5 --cookies cookies.txt \
+              --extractor-args "youtube:player_client=android_testsuite" \
+              -x --audio-format wav -o "/tmp/audio.wav" "{{ inputs.youtube_url }}"
             DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 /tmp/audio.wav)
             echo "Video duration: $DURATION seconds"
             if (( $(echo "$DURATION > 1200" | bc -l) )); then
@@ -44,7 +54,9 @@ tasks:
             FILE_SIZE=$(stat -c%s /tmp/audio_compressed.mp3 2>/dev/null || stat -f%z /tmp/audio_compressed.mp3)
             echo "Compressed audio size: $FILE_SIZE bytes"
             cp /tmp/audio_compressed.mp3 audio_compressed.mp3
-            yt-dlp --no-playlist --extractor-args "youtube:player_client=ios" --print title --print thumbnail "{{ inputs.youtube_url }}" > metadata.txt 2>/dev/null || echo "metadata extraction failed" > metadata.txt
+            yt-dlp --no-playlist --cookies cookies.txt \
+              --extractor-args "youtube:player_client=android_testsuite" \
+              --print title --print thumbnail "{{ inputs.youtube_url }}" > metadata.txt 2>/dev/null || echo "metadata extraction failed" > metadata.txt
             echo "Download complete!"
         outputFiles:
           - audio_compressed.mp3
@@ -124,6 +136,7 @@ tasks:
 
   - id: validate_tweet
     type: io.kestra.plugin.scripts.shell.Commands
+    containerImage: "python:3.11-slim"
     commands:
       - |
         set -e
@@ -199,7 +212,19 @@ tasks:
             accessSecret: '{{ secret("TWITTER_ACCESS_SECRET") }}'
           });
 
+          const isDryRun = {{ inputs.dry_run }};
+
           async function postTweet() {
+            if (isDryRun) {
+              console.log('DRY RUN: Skipping Twitter posting');
+              console.log(`Tweet text: ${tweetText}`);
+              const result = { tweet_id: 'dry_run_' + Date.now(), tweet_text: tweetText, posted_at: new Date().toISOString(), dry_run: true };
+              fs.writeFileSync('tweet_result.json', JSON.stringify(result, null, 2));
+              fs.writeFileSync('tweet_id.txt', `${result.tweet_id}\n`);
+              fs.writeFileSync('tweet_text.txt', `${tweetText}\n`);
+              return;
+            }
+
             console.log('Uploading image...');
             const mediaId = await client.v1.uploadMedia(imagePath);
             console.log(`Image uploaded, mediaId: ${mediaId}`);

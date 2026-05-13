@@ -29,6 +29,7 @@ export interface Execution {
   };
   inputs?: {
     youtube_url?: string;
+    youtube_cookies?: string;
     [key: string]: unknown;
   };
   taskRunList?: TaskRun[];
