@@ -1,26 +1,35 @@
 # Future Scope & Roadmap
 
-## Phase 0: MVP (Current)
-- [x] YouTube to Tweet pipeline
+## Phase 0: Current Baseline
+
+- [x] YouTube to tweet pipeline orchestration
+- [x] Parallel asset preparation (thumbnail + audio)
 - [x] Groq Whisper transcription
-- [x] Groq Llama 3.3 generation
-- [x] Human-in-the-loop approval
-- [x] Basic Twitter/X posting with media
-- [x] Kestra orchestration
+- [x] Groq Llama 3.3 tweet generation
+- [x] Human approval with editable tweet text
+- [x] Dry-run posting mode
+- [x] Connect X OAuth 2.0 frontend flow
+- [x] OAuth 1.0a fallback posting from Kestra
+- [x] PostgreSQL result persistence
 
 ## Phase 1: Multi-Platform Support
-- [ ] **LinkedIn Posts**: Format transcripts into professional LinkedIn articles or updates.
-- [ ] **Blog Articles**: Generate SEO-optimized blog drafts from video content.
-- [ ] **Instagram/Threads**: Adapt content for visual-first social platforms.
 
-## Phase 2: Short-Form Video Generation
-- [ ] **YouTube Shorts / Reels / TikTok**: Automatically identify viral segments in long-form videos and crop them for vertical mobile viewing.
-- [ ] **AI Captions**: Burn-in animated captions for silent-scrolling engagement.
+- [ ] LinkedIn post generation
+- [ ] Blog draft generation
+- [ ] Threads / Instagram adaptation
 
-## Phase 3: Analytics & Optimization
-- [ ] **Growth Prediction**: Use AI to predict which headlines or thumbnails will perform best.
-- [ ] **A/B Testing**: Run multiple variations of a tweet to see which gets more engagement.
-- [ ] **AI Memory**: Learn from past successful posts to refine the brand voice and style.
+## Phase 2: Short-Form Video Expansion
+
+- [ ] YouTube Shorts / Reels / TikTok output
+- [ ] Viral clip detection
+- [ ] Caption rendering for silent viewing
+
+## Phase 3: Optimization Layer
+
+- [ ] Growth prediction
+- [ ] A/B testing for multiple tweet variants
+- [ ] Brand-memory and tone learning
 
 ## Long-Term Vision
-Vid2Tweet aims to be the complete "Content Command Center" for creators — a single tool that takes a raw video and populates an entire week's worth of social media content across every major platform, all with a single click and minor human oversight.
+
+Vid2Tweet is heading toward a creator workflow hub where one source video can fan out into multiple reviewable social assets with a consistent human-in-the-loop approval layer.

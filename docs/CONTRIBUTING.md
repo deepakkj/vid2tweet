@@ -1,34 +1,53 @@
 # Contributing to Vid2Tweet
 
-We welcome contributions! Whether it's a bug fix, a new feature, or improving documentation, here's how you can help.
+Vid2Tweet is a workflow-driven project, so changes usually touch both implementation and documentation.
 
-## Adding New Agent Tasks
+## Where To Change Things
 
-Vid2Tweet is designed around Kestra workflows. To add a new capability (e.g., generating LinkedIn posts):
+- `kestra/workflows/` — orchestrator and task subflows
+- `frontend/src/app/` — UI pages and Next.js route handlers
+- `frontend/src/lib/` — Kestra API client helpers
+- `frontend/src/types/` — shared execution and task types
+- `scripts/` — local setup and flow deployment helpers
+- `docs/` — architecture, setup, and flow reference docs
 
-1.  **Create a sub-flow**: Add a new YAML file in `kestra/workflows/tasks/` for the specific agent logic.
-2.  **Integrate into the main pipeline**: Update `kestra/workflows/content-pipeline.yml` to include the new task.
-3.  **Update the frontend**: Add UI elements in `frontend/src/app/` to display or interact with the new output.
-4.  **Test locally**: Run `./scripts/deploy-flows.sh` and trigger a test execution.
+## Workflow Changes
 
-## Code Style Guidelines
+If you change any Kestra flow:
 
-- **DRY (Don't Repeat Yourself)**: If you find yourself copying Kestra task logic, consider moving it to a sub-flow or a shared script.
-- **SOLID**: Keep each Kestra task focused on a single responsibility.
-- **KISS (Keep It Simple, Stupid)**: This is a hackathon-scale project. Favor readability and maintainability over complex abstractions.
-- **YAGNI (You Ain't Gonna Need It)**: Don't implement features "just in case." Focus on the current roadmap goals.
+1. Update the YAML in `kestra/workflows/`
+2. Keep inputs and descriptions consistent between `content-pipeline.yml` and any mirrored subflow inputs
+3. Update [Flow Reference](FLOWS.md)
+4. Update [Architecture & Design](ARCHITECTURE.md) if the end-to-end behavior changed
+5. Update diagrams in `docs/diagrams/` if the sequence or system shape changed
 
-## Project Structure
+## Frontend Changes
 
-- `kestra/workflows/`: Main workflow definitions.
-- `frontend/src/app/`: Next.js pages and components.
-- `frontend/src/lib/`: API clients and shared utilities.
-- `scripts/`: Deployment and helper scripts.
+If you change the frontend trigger, polling, approval, or auth behavior:
 
-## Pull Request Process
+1. Update the relevant files in `frontend/src/app/` and `frontend/src/lib/`
+2. Update setup docs if env vars or credentials changed
+3. Update architecture docs if the interaction between frontend and Kestra changed
 
-1.  **Branching**: Create a feature branch from `main`.
-2.  **Commits**: Use clear, descriptive commit messages.
-3.  **Verification**: Ensure `podman compose up` works and the frontend builds without errors.
-4.  **Documentation**: Update relevant `.md` files in `docs/` if your changes affect architecture or setup.
-5.  **Submit**: Open a PR and describe your changes clearly.
+## Verification Checklist
+
+Before opening a PR:
+
+1. `podman compose up -d`
+2. `./scripts/deploy-flows.sh`
+3. `cd frontend && npm install && npm run build`
+4. Trigger a local pipeline run if your change affects flow behavior
+5. Update documentation for any changed user flow, architecture, env var, or workflow contract
+
+## Documentation Rules
+
+- Keep README and `docs/` aligned with the live flow YAML and frontend behavior
+- Do not leave stale setup steps after env var or auth changes
+- Prefer documenting exact flow names, input names, and artifact names
+
+## Design Principles
+
+- **DRY** — extract shared logic when it reduces repetition
+- **SOLID** — keep each flow or UI module focused
+- **KISS** — optimize for hackathon clarity and fast iteration
+- **YAGNI** — avoid speculative abstractions
