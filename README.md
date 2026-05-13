@@ -2,7 +2,22 @@
 
 > Transform a YouTube video into a reviewable tweet with Kestra orchestration, Groq models, human approval, and flexible X posting modes.
 
-![Demo](docs/assets/demo.gif)
+## Table of Contents
+
+- [What It Does](#what-it-does)
+- [Current Flow](#current-flow)
+- [Screenshots](#screenshots)
+- [Tech Stack](#tech-stack)
+- [Posting Modes](#posting-modes)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Manual Flow Deployment Order](#manual-flow-deployment-order)
+- [How To Use The App](#how-to-use-the-app)
+- [Operational Notes](#operational-notes)
+- [Security Note](#security-note)
+- [Documentation](#documentation)
+- [AI Models Used](docs/FLOWS.md#ai-models-used)
+- [License](#license)
 
 ## What It Does
 
@@ -44,15 +59,18 @@ Kestra content-pipeline
 
 ### Kestra Topology flow for Vid2Tweet
 
-![Kestra Topology flow for Vid2Tweet](docs/assets/kestra-topology-flow.png)
+
+<img src="docs/assets/kestra-topology-flow.png" alt="Kestra Topology flow for Vid2Tweet" width="400" />
 
 ### Home screen
 
-![Home screen](docs/assets/home-screen.png)
+
+<img src="docs/assets/home-screen.png" alt="Home screen" width="400" />
 
 ### Approval screen
 
-![Approval screen](docs/assets/approval-screen.png)
+
+<img src="docs/assets/approval-screen.png" alt="Approval screen" width="400" />
 
 ## Tech Stack
 
@@ -175,6 +193,10 @@ This repo is configured for local development speed. In the current setup, `NEXT
 - [Contributing](docs/CONTRIBUTING.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Design System](DESIGN.md)
+
+## AI Models Used
+
+See the [AI Models Used section in the Flow Reference](docs/FLOWS.md#ai-models-used) for details on the models powering transcription and tweet generation.
 
 ## License
 
