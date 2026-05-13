@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { listExecutions, triggerPipeline } from '@/lib/kestra-client';
+import { listExecutions } from '@/lib/kestra-client';
 import type { Execution } from '@/types/kestra';
 
 export default function HomePage() {
@@ -12,12 +12,36 @@ export default function HomePage() {
   const [dryRun, setDryRun] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [twitterConnected, setTwitterConnected] = useState(false);
+  const [twitterUsername, setTwitterUsername] = useState('');
+  const [disconnecting, setDisconnecting] = useState(false);
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [executionsError, setExecutionsError] = useState('');
 
   const validateYoutubeUrl = (url: string) => {
     const regex = /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]+/;
     return regex.test(url);
+  };
+
+  useEffect(() => {
+    fetch('/api/auth/twitter/status')
+      .then(r => r.json())
+      .then((data: { connected: boolean; username?: string }) => {
+        setTwitterConnected(data.connected);
+        if (data.connected && data.username) setTwitterUsername(data.username);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true);
+    try {
+      await fetch('/api/auth/twitter/disconnect', { method: 'POST' });
+      setTwitterConnected(false);
+      setTwitterUsername('');
+    } finally {
+      setDisconnecting(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -34,8 +58,14 @@ export default function HomePage() {
     setLoading(true);
 
     try {
-      const res = await triggerPipeline(url, cookies, dryRun);
-      router.push(`/pipeline/${res.id}`);
+      const res = await fetch('/api/pipeline/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ youtube_url: url, youtube_cookies: cookies, dry_run: dryRun }),
+      });
+      const data = await res.json() as { id?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      router.push(`/pipeline/${data.id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to trigger pipeline');
       setLoading(false);
@@ -99,6 +129,35 @@ export default function HomePage() {
         </header>
 
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 mb-12">
+          {/* Twitter connection banner */}
+          <div className={`flex items-center justify-between rounded-lg px-4 py-3 mb-5 text-sm font-medium border ${
+            twitterConnected
+              ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-gray-50 border-gray-200 text-gray-600'
+          }`}>
+            {twitterConnected ? (
+              <span>Connected as <strong>@{twitterUsername}</strong> — tweets will post to this account</span>
+            ) : (
+              <span>Connect your X account to post tweets without a paid API plan</span>
+            )}
+            {twitterConnected ? (
+              <button
+                type="button"
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                className="ml-4 px-3 py-1 rounded-md bg-white border border-green-300 text-green-700 hover:bg-green-100 text-xs font-semibold disabled:opacity-50"
+              >
+                Disconnect
+              </button>
+            ) : (
+              <a
+                href="/api/auth/twitter"
+                className="ml-4 px-3 py-1 rounded-md bg-black text-white text-xs font-semibold hover:bg-gray-800"
+              >
+                Connect X
+              </a>
+            )}
+          </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-4">
               <input

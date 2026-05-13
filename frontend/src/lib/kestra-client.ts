@@ -64,7 +64,8 @@ export async function resumeExecution(
   if (!res.ok) {
     throw new Error(`Failed to resume execution: ${res.status} ${res.statusText}`);
   }
-  return res.json();
+  const text = await res.text();
+  return text ? JSON.parse(text) : {};
 }
 
 export async function listExecutions() {

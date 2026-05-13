@@ -236,6 +236,16 @@ export default function PipelinePage() {
   return (
     <main className="flex-1 bg-gray-50 text-gray-900 py-12">
       <div className="max-w-4xl mx-auto px-4">
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 font-medium transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Home
+        </button>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 mb-8">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
             <div>
