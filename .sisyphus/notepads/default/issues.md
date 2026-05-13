@@ -1,2 +1,0 @@
-- Compose startup is blocked by an existing listener on port 8080.
-- Kestra did not become reachable through the new compose deployment, so flow deployment and execution could not be validated.

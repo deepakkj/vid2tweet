@@ -1,3 +1,0 @@
-- Kestra smoke test flow was added at kestra/workflows/_smoke-test.yml with the required shell command task.
-- ./scripts/encode-secrets.sh succeeds after copying .env.example to .env.
-- podman compose up -d can fail on macOS if port 8080 is already occupied; the error surfaced from the Kestra container bind.

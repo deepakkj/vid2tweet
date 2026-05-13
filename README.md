@@ -40,6 +40,20 @@ Kestra content-pipeline
         └─ PostgreSQL
 ```
 
+## Screenshots
+
+### Kestra Topology flow for Vid2Tweet
+
+![Kestra Topology flow for Vid2Tweet](docs/assets/kestra-topology-flow.png)
+
+### Home screen
+
+![Home screen](docs/assets/home-screen.png)
+
+### Approval screen
+
+![Approval screen](docs/assets/approval-screen.png)
+
 ## Tech Stack
 
 | Component | Technology |
