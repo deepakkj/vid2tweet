@@ -4,6 +4,11 @@
 
 Vid2Tweet is built around one orchestration flow and five task subflows.
 
+## AI Models Used
+
+- **Groq Whisper (whisper-large-v3):** Used for audio transcription in the `transcribe-audio` subflow.
+- **Groq Llama 3.3 (llama-3.3-70b-versatile):** Used for tweet generation in the `generate-tweet` subflow.
+
 ## Flow Inventory
 
 | Flow | Purpose |
